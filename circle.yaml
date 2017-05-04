@@ -15,6 +15,6 @@ dependencies:
 
 test:
   override:
-    - geo vet github.com/geodatalake/lambdas/geotiff
-    - geo vet github.com/geodatalake/lambdas/lidar
+    - go vet github.com/geodatalake/lambdas/geotiff
+    - go vet github.com/geodatalake/lambdas/lidar
     - go test github.com/geodatalake/lambdas/geotiff
