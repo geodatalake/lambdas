@@ -10,8 +10,6 @@ dependencies:
     - mkdir -p ~/.go_workspace/src/github.com/geodatalake
     - ln -s ${HOME}/${CIRCLE_PROJECT_REPONAME} ${HOME}/.go_workspace/src/github.com/geodatalake/
     # './...' is a relative pattern which means all subdirectories
-    - go get -t -d -v ./...
-    - go build -v
 
 test:
   override:
