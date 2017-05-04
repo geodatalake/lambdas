@@ -7,6 +7,7 @@ machine:
 
 dependencies:
   override:
+    - rm -rf ${HOME}/.go_workspace/src/github.com/geodatalake/
     - mkdir -p ~/.go_workspace/src/github.com/geodatalake
     - ln -s ${HOME}/${CIRCLE_PROJECT_REPONAME} ${HOME}/.go_workspace/src/github.com/geodatalake/
     - go get -u github.com/golang/geo/s2
