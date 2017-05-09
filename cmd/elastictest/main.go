@@ -11,9 +11,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
-	//	"github.com/geodatalake/elastic"
 	"github.com/geodatalake/lambdas/elastichelper"
 	elastic "gopkg.in/olivere/elastic.v5"
 )
@@ -27,8 +27,10 @@ func (tl *TraceLogger) Printf(format string, v ...interface{}) {
 
 func main() {
 	host := flag.String("host", "localhost", "Elastic Search Host")
-	port := flag.String("port", "9501", "Elastic Search Port")
+	port := flag.String("port", "9200", "Elastic Search Port")
+	auth := flag.String("auth", "", "user:password for elastic basic auth")
 	sniff := flag.Bool("sniff", false, "Enable sniffing")
+	trace := flag.Bool("trace", false, "Enable trace logging")
 	help := flag.Bool("h", false, "Shows help info")
 	flag.Parse()
 
@@ -42,15 +44,26 @@ func main() {
 	url := fmt.Sprintf("http://%s:%s", *host, *port)
 	log.Println("Using", url, "sniff is", *sniff)
 	logger := &TraceLogger{}
-	client, err := elastic.NewClient(
-		elastic.SetURL(url),
-		elastic.SetHealthcheckTimeout(time.Second*10),
-		elastic.SetHealthcheckTimeoutStartup(time.Second*10),
-		elastic.SetSniff(*sniff),
-		elastic.SetInfoLog(logger),
-		elastic.SetErrorLog(logger),
-		elastic.SetScheme("http"),
-		elastic.SetBasicAuth("elastic", "changeme"))
+	opts := make([]elastic.ClientOptionFunc, 0, 16)
+	opts = append(opts, elastic.SetURL(url))
+	opts = append(opts, elastic.SetHealthcheckTimeout(time.Second*10))
+	opts = append(opts, elastic.SetHealthcheckTimeoutStartup(time.Second*10))
+	opts = append(opts, elastic.SetSniff(*sniff))
+	opts = append(opts, elastic.SetInfoLog(logger))
+	opts = append(opts, elastic.SetErrorLog(logger))
+	if *trace {
+		opts = append(opts, elastic.SetTraceLog(logger))
+	}
+	opts = append(opts, elastic.SetScheme("http"))
+	if *auth != "" {
+		splits := strings.Split(*auth, ":")
+		if len(splits) != 2 {
+			log.Println("Auth must be username:password format")
+			os.Exit(10)
+		}
+		opts = append(opts, elastic.SetBasicAuth(splits[0], splits[1]))
+	}
+	client, err := elastic.NewClient(opts...)
 
 	if err != nil {
 		log.Println("Connection failed:", err)

@@ -14,9 +14,25 @@ dependencies:
     - go get -u golang.org/x/image/tiff
     - go get -u golang.org/x/image/tiff/lzw
     - go get -u github.com/dustin/go-humanize
+    - go get -u gopkg.in/olivere/elastic.v5
+    - go get -u github.com/aws/aws-sdk-go/aws
+    - go get -u github.com/aws/aws-sdk-go/aws/session
+    - go get -u github.com/aws/aws-sdk-go/service/s3
+    - go get -u github.com/satori/go.uuid
 
 test:
   override:
     - go vet github.com/geodatalake/lambdas/geotiff
     - go vet github.com/geodatalake/lambdas/lidar
+    - go vet github.com/geodatalake/lambdas/bucket
+    - go vet github.com/geodatalake/lambdas/elastichelper
+    - go vet github.com/geodatalake/lambdas/datalake
+    - go vet github.com/geodatalake/lambdas/cmd/elastictest
+    - go build github.com/geodatalake/lambdas/geotiff
+    - go build github.com/geodatalake/lambdas/lidar
+    - go build github.com/geodatalake/lambdas/bucket
+    - go build github.com/geodatalake/lambdas/datalake
+    - go build github.com/geodatalake/lambdas/elastichelper
     - go test github.com/geodatalake/lambdas/geotiff
+    - go test github.com/geodatalake/lambdas/bucket
+    - go test github.com/geodatalake/lambdas/datalake
