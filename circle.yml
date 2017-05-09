@@ -18,7 +18,7 @@ dependencies:
     - go get -u github.com/aws/aws-sdk-go/aws
     - go get -u github.com/aws/aws-sdk-go/aws/session
     - go get -u github.com/aws/aws-sdk-go/service/s3
-....- go get -u github.com/satori/go.uuid
+    - go get -u github.com/satori/go.uuid
 
 test:
   override:
