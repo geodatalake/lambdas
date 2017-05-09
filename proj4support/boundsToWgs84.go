@@ -3,6 +3,7 @@ package proj4support
 import (
 	"fmt"
 	"math"
+	"os"
 	"github.com/xeonx/proj4"
 	"github.com/xeonx/geom"
 )
@@ -13,8 +14,8 @@ func ConvertPoints( epsg  string , points []geom.Point )  (outpoints []geom.Poin
 	const deg2Rad = math.Pi / 180.0
 	const rad2Deg = 180.0 / math.Pi
 
-	fmt.Println( "We are in" )
-
+	// Point the project to the local proj4 configuration files.
+	os.Setenv("PROJ_LIB", "config")
 
 	srcProjection, err := proj.InitPlus( "+init=epsg:"+ epsg )
 
