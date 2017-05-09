@@ -37,7 +37,7 @@ test:
     - go build github.com/geodatalake/lambdas/bucket
     - go build github.com/geodatalake/lambdas/datalake
     - go build github.com/geodatalake/lambdas/elastichelper
-    - go vet github.com/geodatalake/lambdas/proj4support
+    - go build github.com/geodatalake/lambdas/proj4support
     - go build github.com/geodatalake/lambdas/cmd/elastictest
     - go test github.com/geodatalake/lambdas/geotiff
     - go test github.com/geodatalake/lambdas/bucket
