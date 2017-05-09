@@ -19,8 +19,8 @@ dependencies:
     - go get -u github.com/aws/aws-sdk-go/aws/session
     - go get -u github.com/aws/aws-sdk-go/service/s3
     - go get -u github.com/satori/go.uuid
-    - go get -u github.com/xeonx/proj4
-    - go get -u github.com/xeonx/geom
+    - go get github.com/xeonx/proj4
+    - go get github.com/xeonx/geom
 
 
 test:
