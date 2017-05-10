@@ -39,7 +39,7 @@ func main() {
 	flag.Parse()
 
 	if *help {
-		fmt.Println("\nelastictest version 1.0.0\n")
+		fmt.Printf("\nelastictest version 1.0.0\n\n")
 		flag.Usage()
 		os.Exit(10)
 	}
