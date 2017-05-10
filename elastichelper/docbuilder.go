@@ -37,7 +37,7 @@ func MakeEnvelope(topLeftLat, topLeftLon, bottomRightLat, bottomRightLon float64
 	return ComposeCoords(topLeft, bottomRight)
 }
 
-type Builder interface {
+type DocBuilder interface {
 	Build() map[string]interface{}
 }
 
@@ -54,7 +54,7 @@ func (o *Document) AddKV(name string, value interface{}) *Document {
 	return o
 }
 
-func (o *Document) Append(name string, object Builder) *Document {
+func (o *Document) Append(name string, object DocBuilder) *Document {
 	o.props[name] = object.Build()
 	return o
 }

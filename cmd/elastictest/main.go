@@ -25,6 +25,10 @@ func (tl *TraceLogger) Printf(format string, v ...interface{}) {
 	log.Printf(format+"\n", v...)
 }
 
+func nd() *elastichelper.Document {
+	return elastichelper.NewDoc()
+}
+
 func main() {
 	host := flag.String("host", "localhost", "Elastic Search Host")
 	port := flag.String("port", "9200", "Elastic Search Port")
@@ -35,6 +39,7 @@ func main() {
 	flag.Parse()
 
 	if *help {
+		fmt.Println("\nelastictest version 1.0.0\n")
 		flag.Usage()
 		os.Exit(10)
 	}
@@ -69,14 +74,14 @@ func main() {
 		log.Println("Connection failed:", err)
 		os.Exit(10)
 	}
-	mapping := elastichelper.NewDoc().
-		Append("source", elastichelper.NewDoc().
-			Append("properties", elastichelper.NewDoc().
-				Append("name", elastichelper.NewDoc().
+	mapping := nd().
+		Append("source", nd().
+			Append("properties", nd().
+				Append("name", nd().
 					AddKV("type", "text")).
 				Append("location", elastichelper.NewLocationMapping())))
 
-	index := elastichelper.NewDoc().Append("mappings", mapping)
+	index := nd().Append("mappings", mapping)
 
 	_, err = client.CreateIndex("sources").BodyJson(index.Build()).Do(ctx)
 	if err != nil {
@@ -84,7 +89,7 @@ func main() {
 		os.Exit(10)
 	}
 
-	doc := elastichelper.NewDoc().
+	doc := nd().
 		AddKV("name", "foobar_test").
 		Append("location", elastichelper.NewEnvelope(34.0, 52.0, 33.0, 53.0))
 
@@ -93,7 +98,7 @@ func main() {
 		log.Println("Document Creation failed", err)
 		os.Exit(10)
 	}
-	doc2 := elastichelper.NewDoc().
+	doc2 := nd().
 		AddKV("name", "foobar_test2").
 		Append("location", elastichelper.MakePoint(33.5, 52.5))
 	_, err = client.Index().Index("sources").Type("source").BodyJson(doc2.Build()).Refresh("true").Do(ctx)
