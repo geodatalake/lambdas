@@ -4,15 +4,15 @@ package proj4support
 import (
 	"fmt"
 	"testing"
-	"github.com/xeonx/geom"
+	"github.com/ctessum/geom"
 )
 
 func check( vpt, opt geom.Point, t *testing.T) {
 
-	vptX := fmt.Sprintf("%.10f", vpt.X)
-	optX := fmt.Sprintf("%.10f", opt.X)
-	vptY := fmt.Sprintf("%.10f", vpt.Y)
-	optY := fmt.Sprintf("%.10f", opt.Y)
+	vptX := fmt.Sprintf("%.6f", vpt.X)
+	optX := fmt.Sprintf("%.6f", opt.X)
+	vptY := fmt.Sprintf("%.6f", vpt.Y)
+	optY := fmt.Sprintf("%.6f", opt.Y)
 
 	if vptX == optX && vptY == optY {
 		fmt.Println( "Passed")

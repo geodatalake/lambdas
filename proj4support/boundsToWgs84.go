@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"github.com/xeonx/proj4"
-	"github.com/xeonx/geom"
+	"log"
+	"bufio"
+	"strings"
+	"github.com/ctessum/geom"
+	"github.com/ctessum/geom/proj"
 )
 
 
@@ -14,20 +17,64 @@ func ConvertPoints( epsg  string , points []geom.Point )  (outpoints []geom.Poin
 	const deg2Rad = math.Pi / 180.0
 	const rad2Deg = 180.0 / math.Pi
 
-	// Point the project to the local proj4 configuration files.
-	
-	os.Setenv("PROJ_LIB", "config")
 
-	srcProjection, err := proj.InitPlus( "+init=epsg:"+ epsg )
-
+	file, err := os.Open("config/epsg")
 	if err != nil {
-		fmt.Println( "Fatal error srcProjection")
+		log.Fatal(err)
 	}
+	defer file.Close()
+
+	//startEPSG := true
+	var epsgTitle = ""
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+
+		// Look for EPSG Name First
+		newLine := scanner.Text()
+		if strings.IndexAny( newLine, "#" ) == 0 {
+
+			if len( strings.Trim( newLine," ") )> 1 {
+				epsgTitle = newLine[2:len(newLine)]
+				epsgTitle = strings.Replace(epsgTitle, "/", "", 1)
+				epsgTitle = "+title=" + epsgTitle
+
+				if len(epsgTitle) == len("+title=") {
+					epsgTitle = ""
+				}
+			} else {
+				epsgTitle = ""
+			}
+		} else if  strings.IndexAny( newLine, "<" ) == 0 &&  len(epsgTitle) > 0 {
+
+			// Handle getting the EPSG code and Proj4 String
+			epsgIndex := strings.IndexAny( newLine, ">")
+			var epsgCode = newLine[1:epsgIndex]
+			epsgCode = "EPSG:" + epsgCode
+
+			// Now get proj string
+			var projString = newLine[epsgIndex+1:len(newLine)]
+			projString = strings.Replace(projString, "<>", "",1)
+			projString = strings.Trim( projString, " ")
+
+			totalString := epsgTitle + " " + projString
+
+			AddDef( epsgCode, totalString )
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
+	}
+
+
+	srcProjection := GetDef("EPSG:"+  epsg)
+
 	if srcProjection == nil {
 		fmt.Println("srcProjection is nil")
 	}
 
-	tgtProjection, err := proj.InitPlus("+proj=longlat +datum=WGS84 +no_defs")
+	tgtProjection, err := proj.Parse("+proj=longlat +datum=WGS84 +no_defs")
+
 	if err != nil {
 		fmt.Println( "Fatal error tgtProjection")
 	}
@@ -35,39 +82,28 @@ func ConvertPoints( epsg  string , points []geom.Point )  (outpoints []geom.Poin
 		fmt.Println("tgtProjection is nil")
 	}
 
+	trans, err := srcProjection.NewTransform(tgtProjection)
+	if err != nil {
+		fmt.Println("Bad new Transform")
+	}
 
 	iCount := len(points)
-
-
-	if err := proj.TransformPoints(srcProjection, tgtProjection, points); err != nil {
-		fmt.Println( "Conversion Error ")
-	}
-
-
-	result := srcProjection.IsGeoCent()
-
-	if result == true {
-		fmt.Println( "Is Geo Centric")
-	}
-
-	result2 := tgtProjection.IsLatLong()
-
-	if result2 == true {
-		fmt.Println( "Is Lat/Long")
-	}
-
-	//var outpoints []geom.Point
 
 	for i := 0; i < iCount; i++ {
 
 
-		var sResult1 string = fmt.Sprintf("%.10f", points[i].X * rad2Deg)
-		var sResult2 string = fmt.Sprintf("%.10f", points[i].Y * rad2Deg)
+		rsltx, rslty, err := trans(points[i].X, points[i].Y)
 
-		fmt.Println ( sResult1  + "," +  sResult2 )
+		if err != nil {
+			fmt.Println( "Error on translateion")
+		} else {
+			var sResult1 string = fmt.Sprintf("%.10f", rsltx )
+			var sResult2 string = fmt.Sprintf("%.10f", rslty )
 
-		outpoints = append(outpoints, geom.Point{X: points[i].X * rad2Deg, Y: points[i].Y * rad2Deg })
+			fmt.Println(sResult1 + "," + sResult2)
 
+			outpoints = append(outpoints, geom.Point{X: rsltx, Y: rslty})
+		}
 
 	}
 
