@@ -45,7 +45,6 @@ func TestConversion (t *testing.T) {
 
 	iCount := len(outpoints)
 
-	fmt.Println(" Length of return list %d ", iCount)
 	for i := 0; i < iCount; i++ {
 
 
