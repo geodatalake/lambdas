@@ -18,7 +18,7 @@ func TestParsePath(t *testing.T) {
 		{"foo", "foo", "/"},
 	}
 	for _, test := range tests {
-		bucket, prefix := parsePath(test.Src)
+		bucket, prefix := ParsePath(test.Src)
 		if bucket != test.Bucket {
 			t.Errorf("Expected bucket name %s, received %v", test.Bucket, bucket)
 		} else if prefix != test.Prefix {

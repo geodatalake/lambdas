@@ -847,21 +847,25 @@ func validateOpt(opt *ReadOptions) error {
 }
 
 func NewFileReader(f *os.File, opt *ReadOptions) (Las, error) {
+	return NewStreamReader(f, opt)
+}
+
+func NewStreamReader(r io.ReaderAt, opt *ReadOptions) (Las, error) {
 	if err := validateOpt(opt); err != nil {
 		return nil, err
 	}
 	signature := make([]byte, 4)
-	if _, err := f.ReadAt(signature, 0); err != nil {
+	if _, err := r.ReadAt(signature, 0); err != nil {
 		return nil, err
 	}
 	if string(signature) == "LASF" {
-		if _, err := f.ReadAt(signature[0:2], headerSizePosition); err != nil {
+		if _, err := r.ReadAt(signature[0:2], headerSizePosition); err != nil {
 			return nil, err
 		}
 		headerSize := binary.LittleEndian.Uint16(signature[0:2])
 		rawHeader := make([]byte, headerSize)
-		f.ReadAt(rawHeader, 0)
-		d := &decoder{reader: f, byteOrder: binary.LittleEndian, opt: opt}
+		r.ReadAt(rawHeader, 0)
+		d := &decoder{reader: r, byteOrder: binary.LittleEndian, opt: opt}
 		hdr := d.readLasHeader(rawHeader)
 		d.header = hdr
 		vlrPos := int64(headerSize)
