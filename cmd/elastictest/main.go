@@ -10,11 +10,13 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/geodatalake/lambdas/elastichelper"
+	awsauth "github.com/smartystreets/go-aws-auth"
 	elastic "gopkg.in/olivere/elastic.v5"
 )
 
@@ -29,10 +31,22 @@ func nd() *elastichelper.Document {
 	return elastichelper.NewDoc()
 }
 
+type AWSSigningTransport struct {
+	HTTPClient  *http.Client
+	Credentials awsauth.Credentials
+}
+
+// RoundTrip implementation
+func (a AWSSigningTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return a.HTTPClient.Do(awsauth.Sign4(req, a.Credentials))
+}
+
 func main() {
 	host := flag.String("host", "localhost", "Elastic Search Host")
 	port := flag.String("port", "9200", "Elastic Search Port")
 	auth := flag.String("auth", "", "user:password for elastic basic auth")
+	aws := flag.Bool("aws", false, "Enable aws signing client")
+	meth := flag.String("meth", "http", "Method to use")
 	sniff := flag.Bool("sniff", false, "Enable sniffing")
 	trace := flag.Bool("trace", false, "Enable trace logging")
 	help := flag.Bool("h", false, "Shows help info")
@@ -46,11 +60,12 @@ func main() {
 
 	ctx := context.Background()
 
-	url := fmt.Sprintf("http://%s:%s", *host, *port)
+	url := fmt.Sprintf("%s://%s:%s", *meth, *host, *port)
 	log.Println("Using", url, "sniff is", *sniff)
 	logger := &TraceLogger{}
 	opts := make([]elastic.ClientOptionFunc, 0, 16)
 	opts = append(opts, elastic.SetURL(url))
+	opts = append(opts, elastic.SetScheme(*meth))
 	opts = append(opts, elastic.SetHealthcheckTimeout(time.Second*10))
 	opts = append(opts, elastic.SetHealthcheckTimeoutStartup(time.Second*10))
 	opts = append(opts, elastic.SetSniff(*sniff))
@@ -59,7 +74,6 @@ func main() {
 	if *trace {
 		opts = append(opts, elastic.SetTraceLog(logger))
 	}
-	opts = append(opts, elastic.SetScheme("http"))
 	if *auth != "" {
 		splits := strings.Split(*auth, ":")
 		if len(splits) != 2 {
@@ -67,6 +81,20 @@ func main() {
 			os.Exit(10)
 		}
 		opts = append(opts, elastic.SetBasicAuth(splits[0], splits[1]))
+	}
+	if *aws {
+		signingTransport := AWSSigningTransport{
+			Credentials: awsauth.Credentials{
+				AccessKeyID:     os.Getenv("AWS_ACCESS_KEY"),
+				SecretAccessKey: os.Getenv("AWS_SECRET_KEY"),
+			},
+			HTTPClient: http.DefaultClient,
+		}
+		signingClient := &http.Client{Transport: http.RoundTripper(signingTransport)}
+		opts = append(opts, elastic.SetHttpClient(signingClient))
+		if *meth == "http" {
+			log.Println("Warning: AWS endpoints are usually https, use -meth https")
+		}
 	}
 	client, err := elastic.NewClient(opts...)
 
