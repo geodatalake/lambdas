@@ -20,6 +20,7 @@ dependencies:
     - go get -u github.com/aws/aws-sdk-go/service/s3
     - go get -u github.com/satori/go.uuid
     - go get -u github.com/ctessum/geom
+    - go get -u github.com/smartystreets/go-aws-auth
 
 
 
