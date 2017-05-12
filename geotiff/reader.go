@@ -351,6 +351,7 @@ func (a ByKey) Len() int           { return len(a) }
 func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByKey) Less(i, j int) bool { return a[i].KeyId < a[j].KeyId }
 
+// io.Reader is required for tiff.Decode() (Go x lib)
 type TiffReader interface {
 	io.Reader
 	io.ReaderAt
@@ -1159,7 +1160,7 @@ var counter uint32
 // All tags and geo keys are loaded when this method returns Tiff (with error == nil)
 func NewDecoder(f TiffReader) (Tiff, error) {
 	header := make([]byte, 8)
-	if _, err := f.Read(header); err != nil {
+	if _, err := f.ReadAt(header, 0); err != nil {
 		return nil, fmt.Errorf("Error reading header %v", err)
 	}
 	endian, err := isTiff(header[:4])
