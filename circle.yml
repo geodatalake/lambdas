@@ -23,7 +23,6 @@ dependencies:
     - go get -u github.com/smartystreets/go-aws-auth
 
 
-
 test:
   override:
     - go vet github.com/geodatalake/lambdas/geotiff
@@ -32,7 +31,11 @@ test:
     - go vet github.com/geodatalake/lambdas/elastichelper
     - go vet github.com/geodatalake/lambdas/datalake
     - go vet github.com/geodatalake/lambdas/cmd/elastictest
+    - go vet github.com/geodatalake/lambdas/cmd/detector
     - go vet github.com/geodatalake/lambdas/proj4support
+    - go vet github.com/geodatalake/lambdas/raster
+    - go vet github.com/geodatalake/lambdas/vector
+    - go vet github.com/geodatalake/lambdas/geoindex
     - go build github.com/geodatalake/lambdas/geotiff
     - go build github.com/geodatalake/lambdas/lidar
     - go build github.com/geodatalake/lambdas/bucket
@@ -40,6 +43,9 @@ test:
     - go build github.com/geodatalake/lambdas/elastichelper
     - go build github.com/geodatalake/lambdas/proj4support
     - go build github.com/geodatalake/lambdas/cmd/elastictest
+    - go build github.com/geodatalake/lambdas/raster
+    - go build github.com/geodatalake/lambdas/vector
+    - go build github.com/geodatalake/lambdas/geoindex
     - go test github.com/geodatalake/lambdas/geotiff
     - go test github.com/geodatalake/lambdas/bucket
     - go test github.com/geodatalake/lambdas/datalake
