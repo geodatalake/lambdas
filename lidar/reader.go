@@ -52,6 +52,16 @@ type CrsRecordGeoTiff struct {
 	NumberOfKeys        uint16
 }
 
+func (geocrs *CrsRecordGeoTiff) String() string {
+	lines := make([]string, 0, 32)
+	for _, v := range geocrs.Geokeys {
+		lines = append(lines, fmt.Sprintf("%s: %v",
+			geotiff.NameForKey(int(v.KeyId)),
+			geotiff.ValueForKey(int(v.KeyId), int(v.Location), 0, int(v.Count), geocrs.Doubles, geocrs.Asciis)))
+	}
+	return strings.Join(lines, "\n")
+}
+
 type CrsRecordWkt struct {
 	Wkt string
 }
