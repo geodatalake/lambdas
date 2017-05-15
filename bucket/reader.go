@@ -82,11 +82,11 @@ func ParsePath(dir string) (bucket, prefix string) {
 }
 
 type BucketFile struct {
-	Bucket       string
-	Key          string
-	LastModified string
-	Region       string
-	Size         int64
+	Bucket       string `json:"bucket"`
+	Key          string `json:"key"`
+	LastModified string `json:"lastModified"`
+	Region       string `json:"region"`
+	Size         int64  `json:"size"`
 }
 
 func NewBucketFile(region, bucket, key, lastModified string, size int64) *BucketFile {
@@ -104,7 +104,7 @@ func (bf *BucketFile) Paths() ([]string, string) {
 	return dirs, file
 }
 
-func ReadBucket(region, dir string) ([]*BucketFile, error) {
+func readBucket(region, dir string) ([]*BucketFile, error) {
 	bucket, prefix := ParsePath(dir)
 	objects, err := mineAllObjects(region, bucket, prefix)
 	if err != nil {
@@ -128,7 +128,7 @@ func ListBucketStructure(region, bucket string) (*DirItem, error) {
 	if !strings.HasSuffix(bucket, "/") {
 		bucket = bucket + "/"
 	}
-	bfs, err := ReadBucket(region, bucket)
+	bfs, err := readBucket(region, bucket)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +138,7 @@ func ListBucketStructure(region, bucket string) (*DirItem, error) {
 		paths, _ := bf.Paths()
 		for _, p := range paths {
 			if p != "" {
-				if nd, ok := rootDir.Children[p]; !ok {
+				if nd, ok := rootDir.Contains(p); !ok {
 					newDir := NewDirItem(p)
 					rootDir.Add(newDir)
 					rootDir = newDir
@@ -168,14 +168,17 @@ func NewDirItem(name string) *DirItem {
 	}
 }
 
-func (di *DirItem) Contains(name string) bool {
-	_, ok := di.Children[name]
-	return ok
+func (di *DirItem) Contains(name string) (*DirItem, bool) {
+	v, ok := di.Children[name]
+	return v, ok
 }
 
-func (di *DirItem) Add(item *DirItem) {
-	if _, ok := di.Children[item.Name]; !ok {
+func (di *DirItem) Add(item *DirItem) *DirItem {
+	if nd, ok := di.Contains(item.Name); !ok {
 		di.Children[item.Name] = item
+		return item
+	} else {
+		return nd
 	}
 }
 
@@ -195,6 +198,68 @@ func (di *DirItem) Print(lvl int, ch chan *DirInfo) {
 	ch <- &DirInfo{Level: lvl, Keys: len(di.Keys), Name: di.Name, Size: di.Size}
 	for _, v := range di.Children {
 		v.Print(lvl+1, ch)
+	}
+}
+
+func (di *DirItem) Iterate() *DirIterator {
+	return newDirIterator(di)
+}
+
+func (di *DirItem) mine(ch chan *DirItem) {
+	ch <- di
+	for _, v := range di.Children {
+		v.mine(ch)
+	}
+}
+
+type DirIterator struct {
+	root *DirItem
+	ch   chan *DirItem
+}
+
+func newDirIterator(di *DirItem) *DirIterator {
+	bi := new(DirIterator)
+	bi.ch = make(chan *DirItem)
+	bi.root = di
+	go bi.traverse()
+	return bi
+}
+
+func (bi *DirIterator) traverse() {
+	bi.root.mine(bi.ch)
+	close(bi.ch)
+}
+
+func (bi *DirIterator) NextWithKeys() (*DirItem, bool) {
+	for {
+		v, ok := bi.Next()
+		if !ok {
+			return nil, false
+		}
+		if len(v.Keys) > 0 {
+			return v, true
+		}
+	}
+}
+
+func (bi *DirIterator) Next() (*DirItem, bool) {
+	for {
+		v, good := <-bi.ch
+		if good {
+			return v, true
+		} else {
+			return nil, false
+		}
+	}
+}
+
+// Drain the channel
+func (bi *DirIterator) Abort() {
+	for {
+		_, ok := bi.Next()
+		if !ok {
+			return
+		}
 	}
 }
 
