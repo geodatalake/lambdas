@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -57,9 +58,35 @@ func (geocrs *CrsRecordGeoTiff) String() string {
 	for _, v := range geocrs.Geokeys {
 		lines = append(lines, fmt.Sprintf("%s: %v",
 			geotiff.NameForKey(int(v.KeyId)),
-			geotiff.ValueForKey(int(v.KeyId), int(v.Location), 0, int(v.Count), geocrs.Doubles, geocrs.Asciis)))
+			geotiff.ValueForKey(int(v.KeyId), int(v.Location), int(v.Value), int(v.Count), geocrs.Doubles, geocrs.Asciis)))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func (geocrs *CrsRecordGeoTiff) GetEPSGCode() (int, bool) {
+	if s, ok := geocrs.GetProjectedCSType(); ok {
+		if strings.HasPrefix(s, "EPSG ") {
+			if retval, err := strconv.Atoi(strings.Split(s, " ")[1]); err != nil {
+				return -1, false
+			} else {
+				return retval, true
+			}
+		}
+	}
+	return -1, false
+}
+
+func (geocrs *CrsRecordGeoTiff) GetProjectedCSType() (string, bool) {
+	if cstType, ok := geocrs.Geokeys[geotiff.GeoKeyProjectedCSTypeGeoKey]; ok {
+		return geotiff.ValueForKey(
+			int(cstType.KeyId),
+			int(cstType.Location),
+			int(cstType.Value),
+			int(cstType.Count),
+			geocrs.Doubles,
+			geocrs.Asciis).(string), true
+	}
+	return "", false
 }
 
 type CrsRecordWkt struct {
