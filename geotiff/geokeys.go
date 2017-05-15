@@ -50,7 +50,10 @@ func ValueForKey(key int, location int, valueOffset int, count int, doubles []fl
 	case 2060:
 		return GeogAzimuthUnitsGeoKey[valueOffset]
 	case 3072:
-		return ProjectionCSTypeGeoKey[valueOffset]
+		if v, ok := ProjectionCSTypeGeoKey[valueOffset]; ok {
+			return v
+		}
+		return fmt.Sprintf("EPSG %d", valueOffset)
 	case 3074:
 		return ProjectionGeoKey[valueOffset]
 	case 3075:

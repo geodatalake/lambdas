@@ -254,6 +254,55 @@ const (
 	gkVerticalUnitsGeoKey            = 4099
 )
 
+// Externally readable geokeys
+const (
+	GeoKeyGTModelTypeGeoKey              = 1024
+	GeoKeyGTRasterTypeGeoKey             = 1025
+	GeoKeyGTCitationGeoKey               = 1026
+	GeoKeyGeographicTypeGeoKey           = 2048
+	GeoKeyGeogCitationGeoKey             = 2049
+	GeoKeyGeogGeodeticDatumGeoKey        = 2050
+	GeoKeyGeogPrimeMeridianGeoKey        = 2051
+	GeoKeyGeogLinearUnitsGeoKey          = 2052
+	GeoKeyGeogLinearUnitSizeGeoKey       = 2053
+	GeoKeyGeogAngularUnitsGeoKey         = 2054
+	GeoKeyGeogAngularUnitSizeGeoKey      = 2055
+	GeoKeyGeogEllipsoidGeoKey            = 2056
+	GeoKeyGeogSemiMajorAxisGeoKey        = 2057
+	GeoKeyGeogSemiMinorAxisGeoKey        = 2058
+	GeoKeyGeogInvFlatteningGeoKey        = 2059
+	GeoKeyGeogAzimuthUnitsGeoKey         = 2060
+	GeoKeyGeogPrimeMeridianLongGeoKey    = 2061
+	GeoKeyProjectedCSTypeGeoKey          = 3072
+	GeoKeyPCSCitationGeoKey              = 3073
+	GeoKeyProjectionGeoKey               = 3074
+	GeoKeyProjCoordTransGeoKey           = 3075
+	GeoKeyProjLinearUnitsGeoKey          = 3076
+	GeoKeyProjLinearUnitSizeGeoKey       = 3077
+	GeoKeyProjStdParallel1GeoKey         = 3078
+	GeoKeyProjStdParallel2GeoKey         = 3079
+	GeoKeyProjNatOriginLongGeoKey        = 3080
+	GeoKeyProjNatOriginLatGeoKey         = 3081
+	GeoKeyProjFalseEastingGeoKey         = 3082
+	GeoKeyProjFalseNorthingGeoKey        = 3083
+	GeoKeyProjFalseOriginLongGeoKey      = 3084
+	GeoKeyProjFalseOriginLatGeoKey       = 3085
+	GeoKeyProjFalseOriginEastingGeoKey   = 3086
+	GeoKeyProjFalseOriginNorthingGeoKey  = 3087
+	GeoKeyProjCenterLongGeoKey           = 3088
+	GeoKeyProjCenterLatGeoKey            = 3089
+	GeoKeyProjCenterEastingGeoKey        = 3090
+	GeoKeyProjCenterNorthingGeoKey       = 3091
+	GeoKeyProjScaleAtNatOriginGeoKey     = 3092
+	GeoKeyProjScaleAtCenterGeoKey        = 3093
+	GeoKeyProjAzimuthAngleGeoKey         = 3094
+	GeoKeyProjStraightVertPoleLongGeoKey = 3095
+	GeoKeyVerticalCSTypeGeoKey           = 4096
+	GeoKeyVerticalCitationGeoKey         = 4097
+	GeoKeyVerticalDatumGeoKey            = 4098
+	GeoKeyVerticalUnitsGeoKey            = 4099
+)
+
 var CompressionTypes map[int]string = map[int]string{
 	cNone:       "None",
 	cCCITT:      "CCITT",
