@@ -6,6 +6,9 @@ machine:
     GOPATH: "${HOME}/.go_workspace:/usr/local/go_workspace:${HOME}/.go_project"
     IMPORT_PATH: "github.com/geodatalake/lambdas"
 
+  services:
+    - docker
+
 dependencies:
   pre:
     - go get -u github.com/golang/geo/s2
@@ -25,10 +28,22 @@ dependencies:
     - ln -s ${HOME}/${CIRCLE_PROJECT_REPONAME} ${HOME}/.go_workspace/src/github.com/geodatalake/
 
   post:
+    - go build $IMPORT_PATH/geotiff
+    - go build $IMPORT_PATH/lidar
+    - go build $IMPORT_PATH/bucket
+    - go build $IMPORT_PATH/datalake
+    - go build $IMPORT_PATH/elastichelper
+    - go build $IMPORT_PATH/proj4support
+    - go build $IMPORT_PATH/cmd/elastictest
+    - go build $IMPORT_PATH/raster
+    - go build $IMPORT_PATH/vector
+    - go build $IMPORT_PATH/geoindex
+    - go build $IMPORT_PATH/scale
     - GOOS=linux go build -a ldflags '-s' $IMPORT_PATH/cmd/detector
+    - cp detector $CIRCLE_ARTIFACTS
 
 test:
-  override:
+  pre:
     - go vet $IMPORT_PATH/geotiff
     - go vet $IMPORT_PATH/lidar
     - go vet $IMPORT_PATH/bucket
@@ -42,16 +57,8 @@ test:
     - go vet $IMPORT_PATH/geoindex
     - go vet $IMPORT_PATH/scale
     - go vet $IMPORT_PATH/cmd/detector
-    - go build $IMPORT_PATH/geotiff
-    - go build $IMPORT_PATH/lidar
-    - go build $IMPORT_PATH/bucket
-    - go build $IMPORT_PATH/datalake
-    - go build $IMPORT_PATH/elastichelper
-    - go build $IMPORT_PATH/proj4support
-    - go build $IMPORT_PATH/cmd/elastictest
-    - go build $IMPORT_PATH/raster
-    - go build $IMPORT_PATH/vector
-    - go build $IMPORT_PATH/geoindex
+
+  override:
     - go test $IMPORT_PATH/geotiff
     - go test $IMPORT_PATH/bucket
     - go test $IMPORT_PATH/datalake
