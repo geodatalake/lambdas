@@ -70,8 +70,9 @@ deployment:
     branch: develop
     owner: geodatalake
     commands:
-      - cp detector ${HOME}/.go_workspace/src/github.com/geodatalake/lambdas/cmd/detector
-      - cd ${HOME}/.go_workspace/src/github.com/geodatalake/lambdas/cmd/detector
+      - pwd
+      - cp detector cmd/detector
+      - cd cmd/detector
       - docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASSWORD https://414519249282.dkr.ecr.us-west-2.amazonaws.com
       - docker build -t geodatalake/detector .
       - docker tag -f detector geodatalake/detector:dev
