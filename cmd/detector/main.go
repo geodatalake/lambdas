@@ -25,7 +25,7 @@ func WriteStderr(s string) {
 
 func WriteJson(filePath string, objectToWrite interface{}) {
 	if f, err := os.Create(filePath); err != nil {
-		WriteStderr(fmt.Sprintf("Error writing %S: %v", filePath, err))
+		WriteStderr(fmt.Sprintf("Error writing %s: %v", filePath, err))
 		os.Exit(20)
 	} else {
 		if jErr := json.NewEncoder(f).Encode(objectToWrite); jErr != nil {
@@ -115,7 +115,7 @@ func main() {
 			outData.Name = "bounds_result"
 			outData.File = &scale.OutputFile{Path: outName}
 		default:
-			WriteStderr(fmt.Sprintf("Unknown request type %s", cr.RequestType))
+			WriteStderr(fmt.Sprintf("Unknown request type %d", cr.RequestType))
 			os.Exit(50)
 		}
 		manifest := scale.FormatManifest([]*scale.OutputData{outData}, nil)
