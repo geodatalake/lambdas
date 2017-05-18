@@ -32,6 +32,7 @@ type Tiff interface {
 	IsGeotiff() bool
 	DescribeGeokeys() ([]string, error)
 	DescribeGeoKey(*GeoKey) string
+	GetGeoKeyValue(int) (interface{}, error)
 	DescribeTiffTags() []string
 	Bounds() (*Bounds, error)
 	Points() (*Raster, float32, float32, error)
@@ -463,6 +464,14 @@ func (d *decoder) ZoomLevel() (int64, error) {
 		}
 	}
 	return 30, nil
+}
+
+func (d *decoder) GetGeoKeyValue(k int) (interface{}, error) {
+	if geokey, err := d.KeyFor(k); err == nil {
+		return ValueForKey(int(geokey.KeyId), int(geokey.Location), int(geokey.Value), int(geokey.Count), d.geoDoubles, d.geoAsciis), nil
+	} else {
+		return nil, err
+	}
 }
 
 func (d *decoder) DescribeGeoKey(geokey *GeoKey) string {

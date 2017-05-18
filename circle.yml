@@ -4,12 +4,13 @@ machine:
     GOROOT: ""
     PATH: "/usr/local/go/bin:/usr/local/go_workspace/bin:~/.go_workspace/bin:${PATH}"
     GOPATH: "${HOME}/.go_workspace:/usr/local/go_workspace:${HOME}/.go_project"
+    IMPORT_PATH: "github.com/geodatalake/lambdas"
+
+  services:
+    - docker
 
 dependencies:
-  override:
-    - rm -rf ${HOME}/.go_workspace/src/github.com/geodatalake/
-    - mkdir -p ~/.go_workspace/src/github.com/geodatalake
-    - ln -s ${HOME}/${CIRCLE_PROJECT_REPONAME} ${HOME}/.go_workspace/src/github.com/geodatalake/
+  pre:
     - go get -u github.com/golang/geo/s2
     - go get -u golang.org/x/image/tiff
     - go get -u golang.org/x/image/tiff/lzw
@@ -21,32 +22,57 @@ dependencies:
     - go get -u github.com/satori/go.uuid
     - go get -u github.com/ctessum/geom
     - go get -u github.com/smartystreets/go-aws-auth
+  override:
+    - rm -rf ${HOME}/.go_workspace/src/github.com/geodatalake/
+    - mkdir -p ~/.go_workspace/src/github.com/geodatalake
+    - ln -s ${HOME}/${CIRCLE_PROJECT_REPONAME} ${HOME}/.go_workspace/src/github.com/geodatalake/
 
+  post:
+    - go build $IMPORT_PATH/geotiff
+    - go build $IMPORT_PATH/lidar
+    - go build $IMPORT_PATH/bucket
+    - go build $IMPORT_PATH/datalake
+    - go build $IMPORT_PATH/elastichelper
+    - go build $IMPORT_PATH/proj4support
+    - go build $IMPORT_PATH/cmd/elastictest
+    - go build $IMPORT_PATH/raster
+    - go build $IMPORT_PATH/vector
+    - go build $IMPORT_PATH/geoindex
+    - go build $IMPORT_PATH/scale
+    - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/detector
+    - cp detector $CIRCLE_ARTIFACTS
 
 test:
+  pre:
+    - go vet $IMPORT_PATH/geotiff
+    - go vet $IMPORT_PATH/lidar
+    - go vet $IMPORT_PATH/bucket
+    - go vet $IMPORT_PATH/elastichelper
+    - go vet $IMPORT_PATH/datalake
+    - go vet $IMPORT_PATH/cmd/elastictest
+    - go vet $IMPORT_PATH/cmd/detector
+    - go vet $IMPORT_PATH/proj4support
+    - go vet $IMPORT_PATH/raster
+    - go vet $IMPORT_PATH/vector
+    - go vet $IMPORT_PATH/geoindex
+    - go vet $IMPORT_PATH/scale
+    - go vet $IMPORT_PATH/cmd/detector
+
   override:
-    - go vet github.com/geodatalake/lambdas/geotiff
-    - go vet github.com/geodatalake/lambdas/lidar
-    - go vet github.com/geodatalake/lambdas/bucket
-    - go vet github.com/geodatalake/lambdas/elastichelper
-    - go vet github.com/geodatalake/lambdas/datalake
-    - go vet github.com/geodatalake/lambdas/cmd/elastictest
-    - go vet github.com/geodatalake/lambdas/cmd/detector
-    - go vet github.com/geodatalake/lambdas/proj4support
-    - go vet github.com/geodatalake/lambdas/raster
-    - go vet github.com/geodatalake/lambdas/vector
-    - go vet github.com/geodatalake/lambdas/geoindex
-    - go build github.com/geodatalake/lambdas/geotiff
-    - go build github.com/geodatalake/lambdas/lidar
-    - go build github.com/geodatalake/lambdas/bucket
-    - go build github.com/geodatalake/lambdas/datalake
-    - go build github.com/geodatalake/lambdas/elastichelper
-    - go build github.com/geodatalake/lambdas/proj4support
-    - go build github.com/geodatalake/lambdas/cmd/elastictest
-    - go build github.com/geodatalake/lambdas/raster
-    - go build github.com/geodatalake/lambdas/vector
-    - go build github.com/geodatalake/lambdas/geoindex
-    - go test github.com/geodatalake/lambdas/geotiff
-    - go test github.com/geodatalake/lambdas/bucket
-    - go test github.com/geodatalake/lambdas/datalake
-    - go test github.com/geodatalake/lambdas/proj4support
+    - go test $IMPORT_PATH/geotiff
+    - go test $IMPORT_PATH/bucket
+    - go test $IMPORT_PATH/datalake
+    - go test $IMPORT_PATH/scale
+    - go test $IMPORT_PATH/proj4support
+
+deployment:
+  dev:
+    branch: develop
+    owner: geodatalake
+    commands:
+      - cp detector ${HOME}/.go_workspace/src/github.com/geodatalake/lambdas/cmd/detector
+      - cd ${HOME}/.go_workspace/src/github.com/geodatalake/lambdas/cmd/detector
+      - docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASSWORD https://414519249282.dkr.ecr.us-west-2.amazonaws.com
+      - docker build -t geodatalake/detector .
+      - docker tag -f detector geodatalake/detector:dev
+      - docker push geodatalake/detector:dev
