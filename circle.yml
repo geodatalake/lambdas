@@ -72,8 +72,7 @@ deployment:
     commands:
       - pwd
       - cp detector cmd/detector
-      - cd cmd/detector
       - docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASSWORD https://414519249282.dkr.ecr.us-west-2.amazonaws.com
-      - docker build -t geodatalake/detector .
-      - docker tag -f detector geodatalake/detector:dev
+      - docker build -t scale-detector cmd/detector
+      - docker tag -f scale-detector geodatalake/detector:dev
       - docker push geodatalake/detector:dev
