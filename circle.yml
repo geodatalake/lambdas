@@ -68,7 +68,7 @@ test:
 deployment:
   dev:
     branch: develop
-    owner: owsi
+    owner: geodatalake
     commands:
       - aws ecr get-login --region us-west-2 > docker-login
       - chmod +x docker-login && ./docker-login
