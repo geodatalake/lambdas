@@ -70,9 +70,9 @@ deployment:
     branch: develop
     owner: geodatalake
     commands:
-      - pwd
+      - aws ecr get-login --region us-west-2 > docker-login
+      - chmod +x docker-login && ./docker-login
       - cp detector cmd/detector
-      - docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASSWORD https://414519249282.dkr.ecr.us-west-2.amazonaws.com
       - docker build -t scale-detector cmd/detector
-      - docker tag -f scale-detector geodatalake/detector:dev
-      - docker push geodatalake/detector:dev
+      - docker tag scale-detector:latest 414519249282.dkr.ecr.us-west-2.amazonaws.com/scale-detector:dev
+      - docker push 414519249282.dkr.ecr.us-west-2.amazonaws.com/scale-detector:dev
