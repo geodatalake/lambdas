@@ -5,8 +5,9 @@
 package vector
 
 import (
-	"fmt"
+	"errors"
 	"io"
+	"github.com/geodatalake/lambdas/geotiff"
 )
 
 type VectorStream interface {
@@ -14,6 +15,22 @@ type VectorStream interface {
 	io.ReaderAt
 }
 
-func IsVector(stream VectorStream) (interface{}, error) {
-	return nil, fmt.Errorf("Not yet implemented")
+type VectorIntfc interface {
+
+	isVector()     	bool
+	isKML()        	bool
+	isShape()   	bool
+	Bounds()	(*geotiff.Bounds, error)
+	getFileLength()	uint32
+}
+
+func IsVector(stream VectorStream) (VectorIntfc, error) {
+
+	vInterface, err := IsVectorType( stream )
+
+	if err == nil {
+		return vInterface, nil
+	}
+
+	return vInterface, errors.New("Not a known vector type")
 }
