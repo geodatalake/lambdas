@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<GroundOverlay>
+	<LatLonBox>
+		<north>36.5891537606816</north>
+		<south>34.33104428115254</south>
+		<east>-79.7706017775578</east>
+		<west>-82.55063278773274</west>
+	</LatLonBox>
+	<Icon>
+		<href>https://gis11.services.ncdot.gov/arcgis/rest/directories/arcgisoutput/NCDOT_CountyBdy_Arc_MapServer/_ags_map0ed8e3633a6f471c956bd167ed2bce78.png</href>
+	</Icon>
+</GroundOverlay>
+</kml>
