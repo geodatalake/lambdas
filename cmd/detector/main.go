@@ -37,6 +37,14 @@ func WriteJson(filePath string, objectToWrite interface{}) {
 	}
 }
 
+//  Errors:
+// 10 Bad number of input arguments
+// 20 Unable to open input
+// 30 Unable to read input
+// 40 Unable to marshal cluster request
+// 50 Unable to read S3 bucket
+// 60 Unable to detect file type
+// 70 Unknown cluster request
 func main() {
 	dev := flag.Bool("dev", false, "Development flag, interpret input as image file")
 	flag.Parse()
@@ -51,18 +59,18 @@ func main() {
 		f, err := os.Open(input)
 		if err != nil {
 			WriteStderr(fmt.Sprintf("Unable to open %s", input))
-			os.Exit(10)
+			os.Exit(20)
 		}
 		b, err := ioutil.ReadAll(f)
 		if err != nil {
 			WriteStderr(err.Error())
-			os.Exit(10)
+			os.Exit(30)
 		}
 		f.Close()
 		var cr geoindex.ClusterRequest
 		if errJson := json.Unmarshal(b, &cr); errJson != nil {
 			WriteStderr(errJson.Error())
-			os.Exit(10)
+			os.Exit(40)
 		}
 		outData := new(scale.OutputData)
 		switch cr.RequestType {
@@ -70,7 +78,7 @@ func main() {
 			root, err2 := bucket.ListBucketStructure(cr.Bucket.Region, cr.Bucket.Bucket)
 			if err2 != nil {
 				WriteStderr(err2.Error())
-				os.Exit(10)
+				os.Exit(50)
 			}
 			iter := root.Iterate()
 			count := 0
@@ -107,7 +115,7 @@ func main() {
 			bounds, prj, err := geoindex.DetectType(stream)
 			if err != nil {
 				WriteStderr(fmt.Sprintf("Error %v", err))
-				os.Exit(10)
+				os.Exit(60)
 			}
 			data := &scale.BoundsResult{Bounds: bounds, Prj: prj}
 			outName := fmt.Sprintf("%s/bounds_result.json", outdir)
@@ -116,11 +124,10 @@ func main() {
 			outData.File = &scale.OutputFile{Path: outName}
 		default:
 			WriteStderr(fmt.Sprintf("Unknown request type %d", cr.RequestType))
-			os.Exit(50)
+			os.Exit(70)
 		}
 		manifest := scale.FormatManifest([]*scale.OutputData{outData}, nil)
 		WriteJson(fmt.Sprintf("%s/results_manifest.json", outdir), manifest)
-		os.Exit(0)
 		os.Exit(0)
 	} else {
 		args := flag.Args()
