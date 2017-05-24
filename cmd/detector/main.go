@@ -392,6 +392,7 @@ func main() {
 		}
 		manifest := scale.FormatManifest([]*scale.OutputData{outData}, nil)
 		WriteJson(fmt.Sprintf("%s/results_manifest.json", outdir), manifest)
+		log.Println("Wrote", manifest.OutputData)
 		os.Exit(0)
 	} else {
 		args := flag.Args()
