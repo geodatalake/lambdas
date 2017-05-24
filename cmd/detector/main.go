@@ -373,6 +373,7 @@ func main() {
 			log.Println("Processed", humanize.Comma(int64(count)), "items, size:", humanize.Bytes(uint64(size)))
 		case geoindex.ExtractFileType:
 			file := cr.File.File
+			log.Println("Processing", cr.File.File)
 			bf := file.AsBucketFile()
 			stream := bf.Stream()
 			bounds, prj, err := geoindex.DetectType(stream)
