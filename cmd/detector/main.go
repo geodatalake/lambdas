@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/dustin/go-humanize"
 	"github.com/geodatalake/lambdas/bucket"
@@ -312,6 +313,7 @@ func main() {
 	}
 
 	if !*dev {
+		started := time.Now().UTC()
 		args := flag.Args()
 		if len(args) != 2 {
 			WriteStderr(fmt.Sprintf("Input arguments [%d] are not 2", len(args)))
@@ -381,11 +383,12 @@ func main() {
 				WriteStderr(fmt.Sprintf("Error %v", err))
 				os.Exit(60)
 			}
+			ended := time.Now().UTC()
 			data := &scale.BoundsResult{Bounds: bounds, Prj: prj, Bucket: bf.Bucket, Key: bf.Key, Region: bf.Region, LastModified: bf.LastModified}
 			outName := fmt.Sprintf("%s/bounds_result.json", outdir)
 			WriteJson(outName, data)
 			outData.Name = "bounds_result"
-			outData.File = &scale.OutputFile{Path: outName}
+			outData.File = &scale.OutputFile{Path: outName, GeoMetadata: &scale.GeoMetadata{Started: started.Format(bucket.ISO8601FORMAT), Ended: ended.Format(bucket.ISO8601FORMAT)}}
 		default:
 			WriteStderr(fmt.Sprintf("Unknown request type %d", cr.RequestType))
 			os.Exit(70)
