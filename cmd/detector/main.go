@@ -23,24 +23,6 @@ import (
 	"github.com/satori/go.uuid"
 )
 
-func WriteStderr(s string) {
-	os.Stderr.Write([]byte(s))
-}
-
-func WriteJson(filePath string, objectToWrite interface{}) {
-	if f, err := os.Create(filePath); err != nil {
-		WriteStderr(fmt.Sprintf("Error writing %s: %v", filePath, err))
-		os.Exit(20)
-	} else {
-		if jErr := json.NewEncoder(f).Encode(objectToWrite); jErr != nil {
-			f.Close()
-			WriteStderr(fmt.Sprintf("Error wrinting %s JSON: %v", filePath, jErr))
-			os.Exit(30)
-		}
-		f.Close()
-	}
-}
-
 func doc() *elastichelper.Document {
 	return elastichelper.NewDoc()
 }
@@ -99,156 +81,26 @@ func produceJobType() []byte {
 				AddKV("70", "bad_cluster_request")))
 	b, err := json.MarshalIndent(data.Build(), "", "  ")
 	if err != nil {
-		WriteStderr(fmt.Sprintf("Error writing job type json: %v", err))
+		scale.WriteStderr(fmt.Sprintf("Error writing job type json: %v", err))
 		os.Exit(-1)
 	}
 	return b
 }
 
-func createError(url, token string, data map[string]interface{}) {
-	if data == nil {
-		return
-	}
-	client := http.Client{}
-	urlStr := fmt.Sprintf("%s/service/scale/api/v5/errors/", url)
-	var b []byte
-	var err error
-	if b, err = json.Marshal(data); err != nil {
-		WriteStderr(err.Error())
-		os.Exit(-1)
-	}
-	req, err1 := http.NewRequest("POST", urlStr, bytes.NewBuffer(b))
-	if err1 != nil {
-		WriteStderr(err1.Error())
-		os.Exit(-1)
-	}
-	req.Header.Add("Authorization", fmt.Sprintf("token=%s", token))
-	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("Cache-Control", "no-cache")
-	resp, err2 := client.Do(req)
-	if err2 != nil {
-		WriteStderr(err2.Error())
-		os.Exit(-1)
-	}
-	resp.Body.Close()
-	fmt.Println("Create New Error", data["name"], resp.Status)
-}
-
-func errorDoc(name, title, description string, existing map[string]int) map[string]interface{} {
-	if _, ok := existing[name]; !ok {
-		return doc().
-			AddKV("name", name).
-			AddKV("title", title).
-			AddKV("description", description).
-			AddKV("category", "ALGORITHM").Build()
-	}
-	return nil
-}
-
-type ExistingError struct {
-	Id           int    `json:"id"`
-	Name         string `json:"name"`
-	Title        string `json:"title"`
-	Description  string `json:"description"`
-	Category     string `json:"category"`
-	IsBuiltin    bool   `json:"is_builtin"`
-	Created      string `json:"created"`
-	LastModified string `json:"last_modified"`
-}
-
-type AllExistingErrors struct {
-	Count   int             `json:"count"`
-	Next    string          `json:"next,omitempty"`
-	Prev    string          `json:"prev,omitempty"`
-	Results []ExistingError `json:"results"`
-}
-
-func gatherExistingErrors(url, token string) map[string]int {
-	retval := make(map[string]int)
-	client := http.Client{}
-	urlStr := fmt.Sprintf("%s/service/scale/api/v5/errors/", url)
-	req, err := http.NewRequest("GET", urlStr, nil)
-	if err != nil {
-		WriteStderr(err.Error())
-		os.Exit(-1)
-	}
-	req.Header.Add("Authorization", fmt.Sprintf("token=%s", token))
-	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("Cache-Control", "no-cache")
-	req.Header.Add("Accept", "application/json")
-	fmt.Println("Url", urlStr, "Headers", req.Header)
-	resp, err1 := client.Do(req)
-	if err1 != nil {
-		WriteStderr(err1.Error())
-		os.Exit(-1)
-	}
-	b, err2 := ioutil.ReadAll(resp.Body)
-	if err2 != nil {
-		WriteStderr(err2.Error())
-		os.Exit(-1)
-	}
-	resp.Body.Close()
-	if resp.StatusCode == 200 {
-		allErrors := new(AllExistingErrors)
-		if errJson := json.Unmarshal(b, allErrors); errJson != nil {
-			WriteStderr(errJson.Error())
-			fmt.Println(" Response:", string(b))
-			os.Exit(-1)
-		}
-		for _, existing := range allErrors.Results {
-			retval[existing.Name] = existing.Id
-		}
-		return retval
-	} else {
-		fmt.Println(" Response:", string(b))
-		os.Exit(-1)
-	}
-	return nil
-}
-
 func createErrors(url, token string) {
-	existing := gatherExistingErrors(url, token)
-	createError(url, token, errorDoc("bad_num_input", "Bad input cardinality", "Bad number of input arguments", existing))
-	createError(url, token, errorDoc("open_input", "Failed to Open input", "Unable to open input", existing))
-	createError(url, token, errorDoc("read_input", "Failed to Read input", "Unable to read input", existing))
-	createError(url, token, errorDoc("marshal_failure", "Marshal JSON Failure", "Unable to marshal cluster request", existing))
-	createError(url, token, errorDoc("bad_s3_read", "Failed S3 Bucket read", "Unable to read S3 bucket", existing))
-	createError(url, token, errorDoc("not_geo", "Not a Geo File", "Unable to detect file type", existing))
-	createError(url, token, errorDoc("bad_cluster_request", "Invalid Cluster Request", "Unknown cluster request", existing))
+	existing := scale.GatherExistingErrors(url, token)
+	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_num_input", "Bad input cardinality", "Bad number of input arguments", existing))
+	scale.CreateScaleError(url, token, scale.ErrorDoc("open_input", "Failed to Open input", "Unable to open input", existing))
+	scale.CreateScaleError(url, token, scale.ErrorDoc("read_input", "Failed to Read input", "Unable to read input", existing))
+	scale.CreateScaleError(url, token, scale.ErrorDoc("marshal_failure", "Marshal JSON Failure", "Unable to marshal cluster request", existing))
+	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_s3_read", "Failed S3 Bucket read", "Unable to read S3 bucket", existing))
+	scale.CreateScaleError(url, token, scale.ErrorDoc("not_geo", "Not a Geo File", "Unable to detect file type", existing))
+	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_cluster_request", "Invalid Cluster Request", "Unknown cluster request", existing))
 }
 
-func validateJobType(url, token string) {
-	// Errors have to registered prior to job type ref'ing those errors
-	client := http.Client{}
-	urlStr := fmt.Sprintf("%s/service/scale/api/v5/job-types/validation/", url)
-	req, err := http.NewRequest("POST", urlStr, bytes.NewBuffer(produceJobType()))
-	req.Header.Add("Authorization", fmt.Sprintf("token=%s", token))
-	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("Cache-Control", "no-cache")
-	req.Header.Add("Accept", "application/json")
-	resp, err := client.Do(req)
-	if err != nil {
-		WriteStderr(fmt.Sprintf("Error registering job type: %v", err))
-		os.Exit(-1)
-	}
-	if resp.StatusCode != 200 {
-		b, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			WriteStderr(err.Error())
-			os.Exit(-1)
-		}
-		resp.Body.Close()
-		fmt.Println(resp.Status, string(b))
-	} else {
-		fmt.Println("Response:", resp.Status)
-	}
-}
-
-// curl -X POST -H "Authorization: token=${DCOS_TOKEN}" -H "Content-Type: application/json" -H "Cache-Control: no-cache" -d @job-type.json "${DCOS_ROOT_URL}/service/scale/api/v5/job-types/"
 func registerJobType(url, token string) {
 	// Errors have to registered prior to job type ref'ing those errors
 	createErrors(url, token)
-	validateJobType(url, token)
 	client := http.Client{}
 	urlStr := fmt.Sprintf("%s/service/scale/api/v5/job-types/", url)
 	req, err := http.NewRequest("POST", urlStr, bytes.NewBuffer(produceJobType()))
@@ -258,13 +110,13 @@ func registerJobType(url, token string) {
 	req.Header.Add("Accept", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
-		WriteStderr(fmt.Sprintf("Error registering job type: %v", err))
+		scale.WriteStderr(fmt.Sprintf("Error registering job type: %v", err))
 		os.Exit(-1)
 	}
 	if resp.StatusCode != 201 {
 		b, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			WriteStderr(err.Error())
+			scale.WriteStderr(err.Error())
 			os.Exit(-1)
 		}
 		resp.Body.Close()
@@ -305,10 +157,10 @@ func main() {
 		os.Exit(0)
 
 	} else if *register != "" && *token == "" {
-		WriteStderr("register requires token to also be specified")
+		scale.WriteStderr("register requires token to also be specified")
 		os.Exit(-1)
 	} else if *token != "" && *register == "" {
-		WriteStderr("token requires register to also be specified")
+		scale.WriteStderr("token requires register to also be specified")
 		os.Exit(-1)
 	}
 
@@ -316,25 +168,25 @@ func main() {
 		started := time.Now().UTC()
 		args := flag.Args()
 		if len(args) != 2 {
-			WriteStderr(fmt.Sprintf("Input arguments [%d] are not 2", len(args)))
+			scale.WriteStderr(fmt.Sprintf("Input arguments [%d] are not 2", len(args)))
 			os.Exit(10)
 		}
 		input := args[0]
 		outdir := args[1]
 		f, err := os.Open(input)
 		if err != nil {
-			WriteStderr(fmt.Sprintf("Unable to open %s", input))
+			scale.WriteStderr(fmt.Sprintf("Unable to open %s", input))
 			os.Exit(20)
 		}
 		b, err := ioutil.ReadAll(f)
 		if err != nil {
-			WriteStderr(err.Error())
+			scale.WriteStderr(err.Error())
 			os.Exit(30)
 		}
 		f.Close()
 		var cr geoindex.ClusterRequest
 		if errJson := json.Unmarshal(b, &cr); errJson != nil {
-			WriteStderr(errJson.Error())
+			scale.WriteStderr(errJson.Error())
 			os.Exit(40)
 		}
 		outData := new(scale.OutputData)
@@ -342,7 +194,7 @@ func main() {
 		case geoindex.ScanBucket:
 			root, err2 := bucket.ListBucketStructure(cr.Bucket.Region, cr.Bucket.Bucket)
 			if err2 != nil {
-				WriteStderr(err2.Error())
+				scale.WriteStderr(err2.Error())
 				os.Exit(50)
 			}
 			iter := root.Iterate()
@@ -361,7 +213,7 @@ func main() {
 						allEXtracts := make([]*scale.OutputFile, 0, len(files))
 						for _, ef := range files {
 							outName := fmt.Sprintf("%s/extract-file-%s.json", outdir, uuid.NewV4().String())
-							WriteJson(outName, ef)
+							scale.WriteJson(outName, ef)
 							myOutputFile := &scale.OutputFile{
 								Path: outName,
 							}
@@ -380,21 +232,21 @@ func main() {
 			stream := bf.Stream()
 			bounds, prj, err := geoindex.DetectType(stream)
 			if err != nil {
-				WriteStderr(fmt.Sprintf("Error %v", err))
+				scale.WriteStderr(fmt.Sprintf("Error %v", err))
 				os.Exit(60)
 			}
 			ended := time.Now().UTC()
 			data := &scale.BoundsResult{Bounds: bounds, Prj: prj, Bucket: bf.Bucket, Key: bf.Key, Region: bf.Region, LastModified: bf.LastModified}
 			outName := fmt.Sprintf("%s/bounds_result.json", outdir)
-			WriteJson(outName, data)
+			scale.WriteJson(outName, data)
 			outData.Name = "bounds_result"
 			outData.File = &scale.OutputFile{Path: outName, GeoMetadata: &scale.GeoMetadata{Started: started.Format(bucket.ISO8601FORMAT), Ended: ended.Format(bucket.ISO8601FORMAT)}}
 		default:
-			WriteStderr(fmt.Sprintf("Unknown request type %d", cr.RequestType))
+			scale.WriteStderr(fmt.Sprintf("Unknown request type %d", cr.RequestType))
 			os.Exit(70)
 		}
 		manifest := scale.FormatManifest([]*scale.OutputData{outData}, nil)
-		WriteJson(fmt.Sprintf("%s/results_manifest.json", outdir), manifest)
+		scale.WriteJson(fmt.Sprintf("%s/results_manifest.json", outdir), manifest)
 		log.Println("Wrote", manifest.OutputData)
 		os.Exit(0)
 	} else {
