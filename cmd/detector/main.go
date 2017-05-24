@@ -381,7 +381,7 @@ func main() {
 				WriteStderr(fmt.Sprintf("Error %v", err))
 				os.Exit(60)
 			}
-			data := &scale.BoundsResult{Bounds: bounds, Prj: prj}
+			data := &scale.BoundsResult{Bounds: bounds, Prj: prj, Bucket: bf.Bucket, Key: bf.Key, Region: bf.Region, LastModified: bf.LastModified}
 			outName := fmt.Sprintf("%s/bounds_result.json", outdir)
 			WriteJson(outName, data)
 			outData.Name = "bounds_result"
