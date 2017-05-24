@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -77,7 +78,6 @@ func produceJobType() []byte {
 				AddKV("30", "read_input").
 				AddKV("40", "marshal_failure").
 				AddKV("50", "bad_s3_read").
-				AddKV("60", "not_geo").
 				AddKV("70", "bad_cluster_request")))
 	b, err := json.MarshalIndent(data.Build(), "", "  ")
 	if err != nil {
@@ -94,7 +94,6 @@ func createErrors(url, token string) {
 	scale.CreateScaleError(url, token, scale.ErrorDoc("read_input", "Failed to Read input", "Unable to read input", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("marshal_failure", "Marshal JSON Failure", "Unable to marshal cluster request", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_s3_read", "Failed S3 Bucket read", "Unable to read S3 bucket", existing))
-	scale.CreateScaleError(url, token, scale.ErrorDoc("not_geo", "Not a Geo File", "Unable to detect file type", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_cluster_request", "Invalid Cluster Request", "Unknown cluster request", existing))
 }
 
@@ -229,14 +228,20 @@ func main() {
 			file := cr.File.File
 			log.Println("Processing", cr.File.File)
 			bf := file.AsBucketFile()
+			data := &scale.BoundsResult{Bucket: bf.Bucket, Key: bf.Key, Region: bf.Region, LastModified: bf.LastModified}
+			if ext := path.Ext(file.Key); ext != "" {
+				data.Extension = ext
+			}
 			stream := bf.Stream()
-			bounds, prj, err := geoindex.DetectType(stream)
+			bounds, prj, typ, err := geoindex.DetectType(stream)
 			if err != nil {
-				scale.WriteStderr(fmt.Sprintf("Error %v", err))
-				os.Exit(60)
+				log.Println("Not a geo")
+			} else {
+				data.Bounds = bounds
+				data.Prj = prj
+				data.Type = typ
 			}
 			ended := time.Now().UTC()
-			data := &scale.BoundsResult{Bounds: bounds, Prj: prj, Bucket: bf.Bucket, Key: bf.Key, Region: bf.Region, LastModified: bf.LastModified}
 			outName := fmt.Sprintf("%s/bounds_result.json", outdir)
 			scale.WriteJson(outName, data)
 			outData.Name = "bounds_result"
@@ -257,13 +262,13 @@ func main() {
 				log.Println(err)
 				os.Exit(10)
 			}
-			bounds, prj, err1 := geoindex.DetectType(f)
+			bounds, prj, typ, err1 := geoindex.DetectType(f)
 			f.Close()
 			if err1 != nil {
 				log.Println(err1)
 				os.Exit(20)
 			}
-			log.Println(bounds, prj)
+			log.Println(bounds, prj, typ)
 		}
 		os.Exit(0)
 	}
