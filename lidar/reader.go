@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"os"
 	"strconv"
@@ -879,7 +880,9 @@ func validateOpt(opt *ReadOptions) error {
 			return fmt.Errorf("FilterCrs is on without Filtering being enabled")
 		}
 	}
-	fmt.Println("Processing using", opt)
+	if opt != nil {
+		fmt.Println("Processing using", opt)
+	}
 	return nil
 }
 
@@ -900,6 +903,7 @@ func NewStreamReader(r io.ReaderAt, opt *ReadOptions) (Las, error) {
 			return nil, err
 		}
 		headerSize := binary.LittleEndian.Uint16(signature[0:2])
+		log.Println("headerSize=", headerSize)
 		rawHeader := make([]byte, headerSize)
 		r.ReadAt(rawHeader, 0)
 		d := &decoder{reader: r, byteOrder: binary.LittleEndian, opt: opt}
