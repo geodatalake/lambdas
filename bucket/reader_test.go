@@ -1,6 +1,9 @@
 package bucket
 
 import (
+	"bytes"
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -341,5 +344,90 @@ func TestDirIterateAbort(t *testing.T) {
 	}
 	if count != 6 {
 		t.Errorf("Expected count 6, received %d", count)
+	}
+}
+
+// A simple buffer that supports ReadAt
+type BufReaderAt struct {
+	buf bytes.Buffer
+}
+
+func (br *BufReaderAt) ReadAt(p []byte, off int64) (int, error) {
+	reqLen := int64(len(p))
+	if br.buf.Len() >= int(off)+len(p) {
+		copy(p, br.buf.Bytes()[int(off):int(off+reqLen)])
+		return len(p), nil
+	}
+	return 0, fmt.Errorf("Request out of bounds, max: %d, req: %d", br.buf.Len(), int(off)+len(p))
+}
+
+func TestChunkReader(t *testing.T) {
+	br := &BufReaderAt{}
+	mySize := int64(512)
+
+	br.buf.WriteString(strings.Repeat("0", int(mySize)))
+	br.buf.WriteString(strings.Repeat("1", int(mySize)))
+	br.buf.WriteString(strings.Repeat("2", int(mySize)))
+	br.buf.WriteString(strings.Repeat("3", int(mySize)))
+
+	cr := NewChunkReader(4*mySize, br)
+	p := make([]byte, 10)
+	n, err := cr.ReadAt(p, 0)
+	if err != nil {
+		t.Error(err)
+	}
+	if n < 10 {
+		t.Errorf("Expected 10 bytes, received %d", n)
+	}
+	if string(p) != "0000000000" {
+		t.Errorf("Expected 10 zero's, received %s", string(p))
+	}
+
+	n, err = cr.ReadAt(p, mySize*1)
+	if err != nil {
+		t.Error(err)
+	}
+	if n < 10 {
+		t.Errorf("Expected 10 bytes, received %d", n)
+	}
+	if string(p) != "1111111111" {
+		t.Errorf("Expected 10 1's, received %s", string(p))
+	}
+
+	n, err = cr.ReadAt(p, mySize*3)
+	if err != nil {
+		t.Error(err)
+	}
+	if n < 10 {
+		t.Errorf("Expected 10 bytes, received %d", n)
+	}
+	if string(p) != "3333333333" {
+		t.Errorf("Expected 10 3's, received %s", string(p))
+	}
+
+	n, err = cr.ReadAt(p, mySize*2)
+	if err != nil {
+		t.Error(err)
+	}
+	if n < 10 {
+		t.Errorf("Expected 10 bytes, received %d", n)
+	}
+	if string(p) != "2222222222" {
+		t.Errorf("Expected 10 2's, received %s", string(p))
+	}
+
+	p1 := make([]byte, 1024)
+	n, err = cr.ReadAt(p1, mySize*2)
+	if err != nil {
+		t.Error(err)
+	}
+	if n < 1024 {
+		t.Errorf("Expected 1024 bytes, received %d", n)
+	}
+	if string(p1)[0:10] != "2222222222" {
+		t.Errorf("Expected 10 2's, received %s", string(p1)[0:10])
+	}
+	if string(p1)[1000:1010] != "3333333333" {
+		t.Errorf("Expected 10 3's, received %s", string(p1)[1000:1010])
 	}
 }

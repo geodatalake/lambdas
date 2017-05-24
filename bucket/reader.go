@@ -285,5 +285,5 @@ func (sfr *S3FileReader) Size() int64 {
 func (bf *BucketFile) Stream() *S3FileReader {
 	svc := s3.New(session.New(), &aws.Config{Region: aws.String(bf.Region)})
 	return &S3FileReader{
-		sectionReader: io.NewSectionReader(NewChunkReader(bf, svc), 0, bf.Size)}
+		sectionReader: io.NewSectionReader(NewChunkReader(bf.Size, NewS3Reader(bf, svc)), 0, bf.Size)}
 }

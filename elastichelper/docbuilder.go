@@ -49,8 +49,30 @@ func NewDoc() *Document {
 	return &Document{props: make(map[string]interface{})}
 }
 
+type ArrayBuilder struct {
+	items []interface{}
+}
+
+func StartArray() *ArrayBuilder {
+	return &ArrayBuilder{items: make([]interface{}, 0, 8)}
+}
+
+func (ab *ArrayBuilder) Add(val interface{}) *ArrayBuilder {
+	if db, ok := val.(DocBuilder); ok {
+		ab.items = append(ab.items, db.Build())
+	} else {
+		ab.items = append(ab.items, val)
+	}
+	return ab
+}
+
 func (o *Document) AddKV(name string, value interface{}) *Document {
 	o.props[name] = value
+	return o
+}
+
+func (o *Document) AppendArray(name string, object *ArrayBuilder) *Document {
+	o.props[name] = object.items
 	return o
 }
 

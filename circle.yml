@@ -41,6 +41,8 @@ dependencies:
     - go build $IMPORT_PATH/scale
     - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/detector
     - cp detector $CIRCLE_ARTIFACTS
+    - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/elastictest
+    - cp elastictest $CIRCLE_ARTIFACTS
 
 test:
   pre:
@@ -70,9 +72,8 @@ deployment:
     branch: develop
     owner: geodatalake
     commands:
-      - aws ecr get-login --region us-west-2 > docker-login
-      - chmod +x docker-login && ./docker-login
+      - docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASSWORD
       - cp detector cmd/detector
       - docker build -t scale-detector cmd/detector
-      - docker tag scale-detector:latest 414519249282.dkr.ecr.us-west-2.amazonaws.com/scale-detector:dev
-      - docker push 414519249282.dkr.ecr.us-west-2.amazonaws.com/scale-detector:dev
+      - docker tag -f scale-detector openwhere/scale-detector:dev
+      - docker push openwhere/scale-detector:dev

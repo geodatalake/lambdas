@@ -2,6 +2,7 @@ package scale
 
 import (
 	"encoding/json"
+	"fmt"
 )
 
 type GeoMetadata struct {
@@ -21,6 +22,14 @@ type OutputData struct {
 	Files []*OutputFile `json:"files,omitempty"`
 }
 
+func (od *OutputData) String() string {
+	if od.File != nil {
+		return fmt.Sprintf("%s file %s", od.Name, od.File.Path)
+	} else {
+		return fmt.Sprintf("%s files", od.Name)
+	}
+}
+
 type ParseResult struct {
 	Filename         string       `json:"filename"`
 	NewWorkspacePath string       `json:"new_workspace_path"`
@@ -32,6 +41,10 @@ type ResultsManifest struct {
 	Version      string         `json:"version"`
 	OutputData   []*OutputData  `json:"output_data,omitempty"`
 	ParseResults []*ParseResult `json:"parse_results,omitempty"`
+}
+
+func (rm *ResultsManifest) String() string {
+	return fmt.Sprintf("Manifest: Version %s, Output: %s", rm.Version, rm.OutputData)
 }
 
 type JobEnvVar struct {
@@ -204,6 +217,10 @@ type CreateJob struct {
 }
 
 type BoundsResult struct {
-	Bounds string `json:"bounds"`
-	Prj    string `json:"prj"`
+	Bounds       string `json:"bounds"`
+	Prj          string `json:"prj"`
+	Bucket       string `json:"bucket"`
+	Key          string `json:"key"`
+	Region       string `json:"region"`
+	LastModified string `json:"lastModified"`
 }

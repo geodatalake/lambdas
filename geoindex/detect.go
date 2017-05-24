@@ -31,9 +31,12 @@ func handleRaster(r interface{}) (string, string, error) {
 		}
 	case lidar.Las:
 		bounds := rtype.Bounds()
+		log.Println("Found bounds", bounds)
 		if rtype.IsWktCrs() {
+			log.Println("WKT CRS")
 			return bounds.AsWkt(), rtype.WktCrs().Wkt, nil
 		} else {
+			log.Println("GeoKeys CRS")
 			prj, ok := rtype.GeotiffCrs().GetProjectedCSType()
 			if !ok {
 				return bounds.AsWkt(), "", nil
@@ -42,6 +45,7 @@ func handleRaster(r interface{}) (string, string, error) {
 			}
 		}
 	}
+	log.Println("Unknown raster interface")
 	return "", "", fmt.Errorf("Unknown raster type %v", r)
 }
 

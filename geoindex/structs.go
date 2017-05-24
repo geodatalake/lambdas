@@ -8,23 +8,25 @@ import (
 )
 
 type BucketFileInfo struct {
-	Region string `json:"region"`
-	Bucket string `json:"bucket"`
-	Key    string `json:"key"`
-	Size   int64  `json:"size"`
+	Region       string `json:"region"`
+	Bucket       string `json:"bucket"`
+	Key          string `json:"key"`
+	Size         int64  `json:"size"`
+	LastModified string `json:"lastModified"`
 }
 
 func NewBucketFileInfo(bf *bucket.BucketFile) *BucketFileInfo {
 	return &BucketFileInfo{
-		Region: bf.Region,
-		Bucket: bf.Bucket,
-		Key:    bf.Key,
-		Size:   bf.Size,
+		Region:       bf.Region,
+		Bucket:       bf.Bucket,
+		Key:          bf.Key,
+		Size:         bf.Size,
+		LastModified: bf.LastModified,
 	}
 }
 
 func (bfi *BucketFileInfo) AsBucketFile() *bucket.BucketFile {
-	return bucket.NewBucketFile(bfi.Region, bfi.Bucket, bfi.Key, "", bfi.Size)
+	return bucket.NewBucketFile(bfi.Region, bfi.Bucket, bfi.Key, bfi.LastModified, bfi.Size)
 }
 
 type ExtractFile struct {
