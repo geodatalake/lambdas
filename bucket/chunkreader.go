@@ -8,66 +8,94 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"log"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
 const (
-	CHUNKSIZE = 512
+	CHUNKSIZE = 1024 + 512
 )
+
+type S3Reader struct {
+	svc  *s3.S3
+	file *BucketFile
+}
+
+func (r *S3Reader) ReadAt(p []byte, off int64) (int, error) {
+	reqLen := int64(len(p))
+	log.Println("Requesting S3", off, off+reqLen-1, reqLen, "bytes")
+	req := &s3.GetObjectInput{
+		Bucket: aws.String(r.file.Bucket),
+		Key:    aws.String(r.file.Key),
+		Range:  aws.String(fmt.Sprintf("bytes=%d-%d", off, off+reqLen-1))} // Range are inclusive
+	in, err := r.svc.GetObject(req)
+	if err != nil {
+		return -1, err
+	}
+	defer in.Body.Close()
+	b, err := ioutil.ReadAll(in.Body)
+	if err != nil {
+		return -1, err
+	}
+	copy(p, b)
+	return len(b), nil
+}
+
+func NewS3Reader(file *BucketFile, svc *s3.S3) *S3Reader {
+	return &S3Reader{file: file, svc: svc}
+}
 
 type ChunkReader struct {
 	start, end int64
 	buf        bytes.Buffer
-	file       *BucketFile
-	svc        *s3.S3
+	size       int64
+	reader     io.ReaderAt
 }
 
 // ChunkReader never calls Read(), it merely maintains
 // a buffer of data and adjusts this buffer to satisfy
 // ReadAt() requests. It is completely resuable by many readers
 // but it is not threadsafe
-func NewChunkReader(file *BucketFile, svc *s3.S3) *ChunkReader {
-	return &ChunkReader{file: file, svc: svc}
+func NewChunkReader(sz int64, r io.ReaderAt) *ChunkReader {
+	return &ChunkReader{size: sz, reader: r}
 }
 
 func (cr *ChunkReader) inSpan(off, amnt int64) bool {
 	if off < cr.start {
 		return false
 	}
-	if off+amnt > cr.end {
+	if off+amnt-1 > cr.end {
 		return false
 	}
 	return true
 }
 
 // Sectionreader assures that the req is inbounds
-func (cr *ChunkReader) ReadAt(p []byte, off int64) (n int, err error) {
+func (cr *ChunkReader) ReadAt(p []byte, off int64) (int, error) {
 	reqLen := int64(len(p))
 	if !cr.inSpan(off, reqLen) {
-		chunckLen := int64(CHUNKSIZE)
-		if reqLen > chunckLen {
-			chunckLen = reqLen
+		chunkLen := int64(CHUNKSIZE)
+		if reqLen > chunkLen {
+			chunkLen = reqLen
 		}
-		if max := cr.file.Size - off; max < chunckLen {
-			chunckLen = max
+		if max := cr.size - off; max < chunkLen {
+			chunkLen = max
 		}
-		req := &s3.GetObjectInput{
-			Bucket: aws.String(cr.file.Bucket),
-			Key:    aws.String(cr.file.Key),
-			Range:  aws.String(fmt.Sprintf("%d-%d", off, off+chunckLen-1))} // Range are inclusive
-		in, err := cr.svc.GetObject(req)
+		p1 := make([]byte, chunkLen)
+		rsize, err := cr.reader.ReadAt(p1, off)
 		if err != nil {
+			log.Println("Error requesting", err)
 			return 0, err
 		}
-		defer in.Body.Close()
-		if cr.buf.Cap() < int(*in.ContentLength) {
-			cr.buf.Grow(int(*in.ContentLength) - cr.buf.Len())
+		if cr.buf.Cap() < int(rsize) {
+			cr.buf.Grow(int(rsize) - cr.buf.Len())
 		}
 		cr.buf.Reset()
 
-		n, err := io.Copy(&cr.buf, in.Body)
+		n, err := io.Copy(&cr.buf, bytes.NewBuffer(p1))
 		if err != nil {
 			return 0, err
 		}
