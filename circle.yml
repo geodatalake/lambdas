@@ -41,6 +41,8 @@ dependencies:
     - go build $IMPORT_PATH/scale
     - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/detector
     - cp detector $CIRCLE_ARTIFACTS
+    - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/elastictest
+    - cp elastictest $CIRCLE_ARTIFACTS
 
 test:
   pre:
@@ -69,14 +71,6 @@ deployment:
   dev:
     branch: develop
     owner: geodatalake
-    commands:
-      - docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASSWORD
-      - cp detector cmd/detector
-      - docker build -t scale-detector cmd/detector
-      - docker tag -f scale-detector openwhere/scale-detector:dev
-      - docker push openwhere/scale-detector:dev
-    branch: develop
-    owner: owsi
     commands:
       - docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASSWORD
       - cp detector cmd/detector
