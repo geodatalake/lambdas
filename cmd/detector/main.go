@@ -16,12 +16,10 @@ import (
 	"path"
 	"time"
 
-	"github.com/dustin/go-humanize"
 	"github.com/geodatalake/lambdas/bucket"
 	"github.com/geodatalake/lambdas/elastichelper"
 	"github.com/geodatalake/lambdas/geoindex"
 	"github.com/geodatalake/lambdas/scale"
-	"github.com/satori/go.uuid"
 )
 
 func doc() *elastichelper.Document {
@@ -32,7 +30,7 @@ func array() *elastichelper.ArrayBuilder {
 	return elastichelper.StartArray()
 }
 
-func produceJobType() []byte {
+func produceJobTypeExtract() []byte {
 	data := doc().
 		AddKV("name", "detect-geo").
 		AddKV("version", "1.0.0").
@@ -42,7 +40,7 @@ func produceJobType() []byte {
 		AddKV("author_name", "Steve_Ingram").
 		AddKV("author_url", "http://www.example.com").
 		AddKV("is_operational", true).
-		AddKV("icon_code", "f02b").
+		AddKV("icon_code", "f279").
 		AddKV("docker_privileged", false).
 		AddKV("docker_image", "openwhere/scale-detector:dev").
 		AddKV("priority", 230).
@@ -97,12 +95,10 @@ func createErrors(url, token string) {
 	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_cluster_request", "Invalid Cluster Request", "Unknown cluster request", existing))
 }
 
-func registerJobType(url, token string) {
-	// Errors have to registered prior to job type ref'ing those errors
-	createErrors(url, token)
+func register(url, token string, data []byte) {
 	client := http.Client{}
 	urlStr := fmt.Sprintf("%s/service/scale/api/v5/job-types/", url)
-	req, err := http.NewRequest("POST", urlStr, bytes.NewBuffer(produceJobType()))
+	req, err := http.NewRequest("POST", urlStr, bytes.NewBuffer(data))
 	req.Header.Add("Authorization", fmt.Sprintf("token=%s", token))
 	req.Header.Add("Content-Type", "application/json")
 	req.Header.Add("Cache-Control", "no-cache")
@@ -121,8 +117,15 @@ func registerJobType(url, token string) {
 		resp.Body.Close()
 		fmt.Println(resp.Status, string(b))
 	} else {
-		fmt.Println("Response:", resp.Status)
+		resp.Body.Close()
+		fmt.Println("Create Job Type Response:", resp.Status)
 	}
+}
+
+func registerJobTypes(url, token string) {
+	// Errors have to registered prior to job type ref'ing those errors
+	createErrors(url, token)
+	register(url, token, produceJobTypeExtract())
 }
 
 //  Errors:
@@ -131,7 +134,6 @@ func registerJobType(url, token string) {
 // 30 Unable to read input
 // 40 Unable to marshal cluster request
 // 50 Unable to read S3 bucket
-// 60 Unable to detect file type
 // 70 Unknown cluster request
 func main() {
 	dev := flag.Bool("dev", false, "Development flag, interpret input as image file")
@@ -147,12 +149,12 @@ func main() {
 	}
 
 	if *jobType {
-		fmt.Println(string(produceJobType()))
+		fmt.Println(string(produceJobTypeExtract()))
 		os.Exit(0)
 	}
 
 	if *register != "" && *token != "" {
-		registerJobType(*register, *token)
+		registerJobTypes(*register, *token)
 		os.Exit(0)
 
 	} else if *register != "" && *token == "" {
@@ -190,40 +192,6 @@ func main() {
 		}
 		outData := new(scale.OutputData)
 		switch cr.RequestType {
-		case geoindex.ScanBucket:
-			root, err2 := bucket.ListBucketStructure(cr.Bucket.Region, cr.Bucket.Bucket)
-			if err2 != nil {
-				scale.WriteStderr(err2.Error())
-				os.Exit(50)
-			}
-			iter := root.Iterate()
-			count := 0
-			size := int64(0)
-			for {
-				di, ok := iter.Next()
-				if !ok {
-					break
-				}
-				if len(di.Keys) > 0 {
-					count += len(di.Keys)
-					size += di.Size
-					files, ok := geoindex.Extract(di)
-					if ok {
-						allEXtracts := make([]*scale.OutputFile, 0, len(files))
-						for _, ef := range files {
-							outName := fmt.Sprintf("%s/extract-file-%s.json", outdir, uuid.NewV4().String())
-							scale.WriteJson(outName, ef)
-							myOutputFile := &scale.OutputFile{
-								Path: outName,
-							}
-							allEXtracts = append(allEXtracts, myOutputFile)
-						}
-						outData.Name = "extract_instructions"
-						outData.Files = allEXtracts
-					}
-				}
-			}
-			log.Println("Processed", humanize.Comma(int64(count)), "items, size:", humanize.Bytes(uint64(size)))
 		case geoindex.ExtractFileType:
 			file := cr.File.File
 			log.Println("Processing", cr.File.File)
