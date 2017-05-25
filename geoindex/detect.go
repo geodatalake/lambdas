@@ -118,7 +118,6 @@ func isRootExt(ext string) bool {
 	case "xml":
 		return false
 	default:
-		log.Println("Unknown extension", ext)
 		return false
 	}
 }
