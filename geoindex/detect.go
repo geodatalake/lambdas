@@ -49,12 +49,27 @@ func handleRaster(r interface{}) (string, string, string, error) {
 	return "", "", "", fmt.Errorf("Unknown raster type %v", r)
 }
 
-func handleVector(v interface{}) (string, string, string, error) {
-	// TODO: Add vector types, bounds are returned as WKT
+func handleVector(v vector.VectorIntfc )  (string, string, string, error) {
+
 	// bounds.AsWkt()
 	// The 2nd string is Projection
 	// The 3rd is the geo type (kml, shapefile, etc)
-	return "", "", "", fmt.Errorf("TODO: Implement vector methods")
+	vBounds, err := v.Bounds()
+
+	if err != nil {
+		return "", "", "", fmt.Errorf("TODO: Implement vector methods")
+	}
+
+	var geotype = "kml"
+	if v.IsShape() {
+		geotype = "shapefile"
+	}
+
+	projection := "EPSG:4326"
+	boundswkt  := vBounds.AsWkt()
+
+	return  boundswkt, projection, geotype, nil
+
 }
 
 func DetectType(stream raster.RasterStream) (string, string, string, error) {
