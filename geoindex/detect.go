@@ -49,7 +49,7 @@ func handleRaster(r interface{}) (string, string, string, error) {
 	return "", "", "", fmt.Errorf("Unknown raster type %v", r)
 }
 
-func handleVector(v vector.VectorIntfc )  (string, string, string, error) {
+func handleVector(v vector.VectorIntfc) (string, string, string, error) {
 
 	// bounds.AsWkt()
 	// The 2nd string is Projection
@@ -66,9 +66,9 @@ func handleVector(v vector.VectorIntfc )  (string, string, string, error) {
 	}
 
 	projection := "EPSG:4326"
-	boundswkt  := vBounds.AsWkt()
+	boundswkt := vBounds.AsWkt()
 
-	return  boundswkt, projection, geotype, nil
+	return boundswkt, projection, geotype, nil
 
 }
 
@@ -161,6 +161,16 @@ func Extract(di *bucket.DirItem) ([]*ExtractFile, bool) {
 				ef.File = NewBucketFileInfo(v.Bucket)
 			} else {
 				ef.Aux = append(ef.Aux, NewBucketFileInfo(v.Bucket))
+			}
+		}
+		if ef.File == nil {
+			// No root file found, just use the first Aux file
+			if len(ef.Aux) > 1 {
+				ef.File = ef.Aux[0]
+				ef.Aux = ef.Aux[1:]
+			} else if len(ef.Aux) == 1 {
+				ef.File = ef.Aux[0]
+				ef.Aux = nil
 			}
 		}
 		retval = append(retval, ef)
