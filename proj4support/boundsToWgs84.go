@@ -9,6 +9,7 @@ import (
 	"strings"
 	"github.com/ctessum/geom"
 	"github.com/ctessum/geom/proj"
+	"runtime"
 )
 
 
@@ -17,8 +18,14 @@ func ConvertPoints( epsg  string , points []geom.Point )  (outpoints []geom.Poin
 	const deg2Rad = math.Pi / 180.0
 	const rad2Deg = 180.0 / math.Pi
 
+	_, fileName, _, _ := runtime.Caller(0)
 
-	file, err := os.Open("config/epsg")
+	eosIndex :=  strings.LastIndex( fileName, "/")
+	rootStr := fileName[:eosIndex]
+	fullPath := rootStr + "/config/epsg"
+	//fmt.Println( fullPath )
+
+	file, err := os.Open( fullPath)
 	if err != nil {
 		log.Fatal(err)
 	}
