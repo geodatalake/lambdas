@@ -4,17 +4,19 @@ import (
 	"github.com/ctessum/geom/proj"
 )
 
-var defs map[string]*proj.SR
+var defsByEPSGValue map[string]*proj.SR
+var defsByEPSGTitle map[string]*proj.SR
 
 func addDef(name, def string) error {
-	if defs == nil {
-		defs = make(map[string]*proj.SR)
+
+	if defsByEPSGValue == nil {
+		defsByEPSGValue = make(map[string]*proj.SR)
 	}
 	proj, err := proj.Parse(def)
 	if err != nil {
 		return err
 	}
-	defs[name] = proj
+	defsByEPSGValue[name] = proj
 	return nil
 }
 
@@ -24,8 +26,32 @@ func AddDef(name, def string) error {
 
 }
 
+func addTitleDef(name, def string) error {
 
-func GetDef( name string ) *proj.SR {
-
-	return defs[name]
+	if defsByEPSGTitle == nil {
+		defsByEPSGTitle = make(map[string]*proj.SR)
+	}
+	proj, err := proj.Parse(def)
+	if err != nil {
+		return err
+	}
+	defsByEPSGTitle[name] = proj
+	return nil
 }
+
+func AddTitleDef(name, def string) error {
+	return addTitleDef(name, def )
+}
+
+func GetDefByEPSG( name string ) *proj.SR {
+
+	return defsByEPSGValue[name]
+}
+
+
+func GetDefByTitle( name string ) *proj.SR {
+
+	return defsByEPSGTitle[name]
+}
+
+

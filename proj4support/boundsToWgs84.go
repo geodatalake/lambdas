@@ -18,7 +18,10 @@ func ConvertPoints( epsg  string , points []geom.Point )  (outpoints []geom.Poin
 	const deg2Rad = math.Pi / 180.0
 	const rad2Deg = 180.0 / math.Pi
 
+	var srcProjection *proj.SR
+
 	_, fileName, _, _ := runtime.Caller(0)
+
 
 	eosIndex :=  strings.LastIndex( fileName, "/")
 	rootStr := fileName[:eosIndex]
@@ -31,7 +34,6 @@ func ConvertPoints( epsg  string , points []geom.Point )  (outpoints []geom.Poin
 	}
 	defer file.Close()
 
-	//startEPSG := true
 	var epsgTitle = ""
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -42,16 +44,13 @@ func ConvertPoints( epsg  string , points []geom.Point )  (outpoints []geom.Poin
 
 			if len( strings.Trim( newLine," ") )> 1 {
 				epsgTitle = newLine[2:len(newLine)]
-				epsgTitle = strings.Replace(epsgTitle, "/", "", 1)
-				epsgTitle = "+title=" + epsgTitle
-
-				if len(epsgTitle) == len("+title=") {
-					epsgTitle = ""
-				}
+				epsgTitle = strings.Replace(epsgTitle, "/", "", -1)
+				epsgTitle = strings.TrimSpace( epsgTitle )
+				epsgTitle = strings.ToUpper(  epsgTitle )
 			} else {
 				epsgTitle = ""
 			}
-		} else if  strings.IndexAny( newLine, "<" ) == 0 &&  len(epsgTitle) > 0 {
+		} else if  strings.IndexAny( newLine, "<" ) == 0 && len( epsgTitle ) > 0 {
 
 			// Handle getting the EPSG code and Proj4 String
 			epsgIndex := strings.IndexAny( newLine, ">")
@@ -61,11 +60,12 @@ func ConvertPoints( epsg  string , points []geom.Point )  (outpoints []geom.Poin
 			// Now get proj string
 			var projString = newLine[epsgIndex+1:len(newLine)]
 			projString = strings.Replace(projString, "<>", "",1)
-			projString = strings.Trim( projString, " ")
+			projString = strings.TrimSpace( projString)
 
-			totalString := epsgTitle + " " + projString
+			totalString := "+title=" + epsgTitle + " " + projString
 
 			AddDef( epsgCode, totalString )
+			AddTitleDef( epsgTitle, totalString)
 		}
 	}
 
@@ -73,23 +73,46 @@ func ConvertPoints( epsg  string , points []geom.Point )  (outpoints []geom.Poin
 		log.Fatal(err)
 	}
 
+	if  strings.Contains( strings.ToUpper(epsg), "EPSG") {
 
-	srcProjection := GetDef("EPSG:"+  epsg)
+		// First lets get epsg string down to its base
+		var epsgPurified = strings.Replace( epsg, "EPSG","",1)
+		epsgPurified = strings.Replace( epsgPurified, ":","",1)
+		epsgPurified = strings.TrimSpace( epsgPurified)
 
-	if srcProjection == nil {
-		fmt.Println("srcProjection is nil")
+		srcProjection = GetDefByEPSG( "EPSG:"+  epsgPurified)
+
+		if srcProjection == nil {
+			fmt.Println("srcProjection is nil")
+			return nil
+		}
+
+	} else {
+
+		var titleStr = strings.TrimSpace( epsg )
+		titleStr = strings.Replace( titleStr, "/","",-1)
+		titleStr = strings.ToUpper( titleStr )
+		srcProjection = GetDefByTitle( titleStr )
+
+		if srcProjection == nil {
+			fmt.Println("srcProjection is nil")
+			return nil
+		}
 	}
+
+
 
 	tgtProjection, err := proj.Parse("+proj=longlat +datum=WGS84 +no_defs")
 
 	if err != nil {
 		fmt.Println( "Fatal error tgtProjection")
 	}
+
 	if tgtProjection == nil {
 		fmt.Println("tgtProjection is nil")
 	}
 
-	trans, err := srcProjection.NewTransform(tgtProjection)
+	trans, err := srcProjection.NewTransform( tgtProjection )
 	if err != nil {
 		fmt.Println("Bad new Transform")
 	}
