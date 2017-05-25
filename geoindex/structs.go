@@ -76,7 +76,7 @@ const (
 type ClusterRequest struct {
 	RequestType DcosRequest    `json:"type"`
 	Bucket      *BucketRequest `json:"bucket,omitempty"`
-	File        *ExtractFile   `json:"file"`
+	File        *ExtractFile   `json:"file,omitempty"`
 }
 
 func (cr *ClusterRequest) String() string {
