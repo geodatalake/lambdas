@@ -15,7 +15,7 @@ func TestInvalidShapeFile( t *testing.T ) {
 
 		result, _ := IsVector(hndle)
 
-		if result.isVector() != false {
+		if result.IsVector() != false {
 			t.Errorf ("File should have been invalid \n")
 		} else {
 			fmt.Println("ShapeFile Invalid - Good Test ")
@@ -51,7 +51,7 @@ func TestValidShapeFile( t *testing.T ) {
 
 		if vsInterface != nil {
 
-			if  vsInterface.isVector() != true  {
+			if  vsInterface.IsVector() != true  {
 				t.Errorf ("Error reading header %v\n", err)
 			} else {
 				fmt.Println("ShapeFile Validated")
@@ -76,7 +76,7 @@ func TestValidKMLFile( t *testing.T ) {
 
 		if vsInterface != nil {
 
-			if  vsInterface.isVector() != true  {
+			if  vsInterface.IsVector() != true  {
 				t.Errorf ("Error reading header %v\n", err)
 			} else {
 				fmt.Println("KML File Validated")
@@ -101,7 +101,7 @@ func TestValidLinearRingKML( t *testing.T ) {
 
 		if vsInterface != nil {
 
-			if  vsInterface.isVector() != true  {
+			if  vsInterface.IsVector() != true  {
 				t.Errorf ("Error reading header %v\n", err)
 			} else {
 				fmt.Println("KML File Validated")
@@ -126,7 +126,7 @@ func TestPointsKML( t *testing.T ) {
 
 		if vsInterface != nil {
 
-			if  vsInterface.isVector() != true  {
+			if  vsInterface.IsVector() != true  {
 				t.Errorf ("Error reading header %v\n", err)
 			} else {
 				fmt.Println("KML File Validated")
@@ -151,7 +151,7 @@ func TestLineStringKML( t *testing.T ) {
 
 		if vsInterface != nil {
 
-			if  vsInterface.isVector() != true  {
+			if  vsInterface.IsVector() != true  {
 				t.Errorf ("Error reading header %v\n", err)
 			} else {
 				fmt.Println("KML File Validated")

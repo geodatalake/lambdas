@@ -408,13 +408,13 @@ func main() {
 				log.Println(err)
 				os.Exit(10)
 				}
-				bounds, prj, err1 := geoindex.DetectType(f)
+				bounds, prj, geotype, err1 := geoindex.DetectType(f)
 				f.Close()
 			if err1 != nil {
 				log.Println(err1)
 				os.Exit(20)
 			}
-			log.Println(bounds, prj)
+			log.Println(bounds, prj, geotype)
 		}
 		os.Exit(0)
 	}

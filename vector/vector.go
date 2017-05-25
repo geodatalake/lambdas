@@ -17,11 +17,11 @@ type VectorStream interface {
 
 type VectorIntfc interface {
 
-	isVector()     	bool
-	isKML()        	bool
-	isShape()   	bool
+	IsVector()     	bool
+	IsKML()        	bool
+	IsShape()   	bool
 	Bounds()	(*geotiff.Bounds, error)
-	getFileLength()	uint32
+	GetFileLength()	uint32
 }
 
 func IsVector(stream VectorStream) (VectorIntfc, error) {

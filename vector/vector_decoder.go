@@ -26,19 +26,19 @@ func (d *decoder) Bounds() ( *geotiff.Bounds, error ) {
 	return d.bounds, nil
 }
 
-func (d *decoder) getFileLength() ( uint32 ) {
+func (d *decoder) GetFileLength() ( uint32 ) {
 	return d.fileLength
 }
 
-func (d *decoder) isVector() ( bool ) {
+func (d *decoder) IsVector() ( bool ) {
 	return d.bVector
 }
 
-func (d *decoder) isKML() ( bool ) {
+func (d *decoder) IsKML() ( bool ) {
 	return d.bKML
 }
 
-func (d *decoder) isShape() ( bool ) {
+func (d *decoder) IsShape() ( bool ) {
 	return d.bShape
 }
 
