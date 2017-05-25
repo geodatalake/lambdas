@@ -217,10 +217,12 @@ type CreateJob struct {
 }
 
 type BoundsResult struct {
-	Bounds       string `json:"bounds"`
-	Prj          string `json:"prj"`
+	Bounds       string `json:"bounds,omitempty"`
+	Prj          string `json:"prj,omitempty"`
 	Bucket       string `json:"bucket"`
 	Key          string `json:"key"`
 	Region       string `json:"region"`
 	LastModified string `json:"lastModified"`
+	Extension    string `json:"extension,omitempty"`
+	Type         string `json:"type,omitempty"`
 }

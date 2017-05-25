@@ -17,16 +17,16 @@ import (
 	"github.com/geodatalake/lambdas/vector"
 )
 
-func handleRaster(r interface{}) (string, string, error) {
+func handleRaster(r interface{}) (string, string, string, error) {
 	switch rtype := r.(type) {
 	case geotiff.Tiff:
 		if rtype.IsGeotiff() {
 			if value, err := rtype.GetGeoKeyValue(geotiff.GeoKeyProjectedCSTypeGeoKey); err != nil {
-				return "", "", err
+				return "", "", "", err
 			} else if bounds, err1 := rtype.Bounds(); err1 != nil {
-				return "", "", err1
+				return "", "", "", err1
 			} else {
-				return bounds.AsWkt(), value.(string), nil
+				return bounds.AsWkt(), value.(string), "geotiff", nil
 			}
 		}
 	case lidar.Las:
@@ -34,32 +34,33 @@ func handleRaster(r interface{}) (string, string, error) {
 		log.Println("Found bounds", bounds)
 		if rtype.IsWktCrs() {
 			log.Println("WKT CRS")
-			return bounds.AsWkt(), rtype.WktCrs().Wkt, nil
+			return bounds.AsWkt(), rtype.WktCrs().Wkt, "lidar", nil
 		} else {
 			log.Println("GeoKeys CRS")
 			prj, ok := rtype.GeotiffCrs().GetProjectedCSType()
 			if !ok {
-				return bounds.AsWkt(), "", nil
+				return bounds.AsWkt(), "", "lidar", nil
 			} else {
-				return bounds.AsWkt(), prj, nil
+				return bounds.AsWkt(), prj, "lidar", nil
 			}
 		}
 	}
 	log.Println("Unknown raster interface")
-	return "", "", fmt.Errorf("Unknown raster type %v", r)
+	return "", "", "", fmt.Errorf("Unknown raster type %v", r)
 }
 
-func handleVector(v interface{}) (string, string, error) {
+func handleVector(v interface{}) (string, string, string, error) {
 	// TODO: Add vector types, bounds are returned as WKT
 	// bounds.AsWkt()
 	// The 2nd string is Projection
-	return "", "", fmt.Errorf("TODO: Implement vector methods")
+	// The 3rd is the geo type (kml, shapefile, etc)
+	return "", "", "", fmt.Errorf("TODO: Implement vector methods")
 }
 
-func DetectType(stream raster.RasterStream) (string, string, error) {
+func DetectType(stream raster.RasterStream) (string, string, string, error) {
 	if r, err := raster.IsRaster(stream); err != nil {
 		if v, err1 := vector.IsVector(stream); err1 != nil {
-			return "", "", fmt.Errorf("Unknown file type %v", err1)
+			return "", "", "", fmt.Errorf("Unknown file type %v", err1)
 		} else {
 			return handleVector(v)
 		}
