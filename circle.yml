@@ -43,6 +43,10 @@ dependencies:
     - cp detector $CIRCLE_ARTIFACTS
     - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/extractbucket
     - cp extractbucket $CIRCLE_ARTIFACTS
+    - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/filegrouper
+    - cp filegrouper $CIRCLE_ARTIFACTS
+    - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/reprojectbounds
+    - cp reprojectbounds $CIRCLE_ARTIFACTS
     - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/elastictest
     - cp elastictest $CIRCLE_ARTIFACTS
 
@@ -53,8 +57,6 @@ test:
     - go vet $IMPORT_PATH/bucket
     - go vet $IMPORT_PATH/elastichelper
     - go vet $IMPORT_PATH/datalake
-    - go vet $IMPORT_PATH/cmd/elastictest
-    - go vet $IMPORT_PATH/cmd/detector
     - go vet $IMPORT_PATH/proj4support
     - go vet $IMPORT_PATH/raster
     - go vet $IMPORT_PATH/vector
@@ -62,6 +64,9 @@ test:
     - go vet $IMPORT_PATH/scale
     - go vet $IMPORT_PATH/cmd/detector
     - go vet $IMPORT_PATH/cmd/extractbucket
+    - go vet $IMPORT_PATH/cmd/filegrouper
+    - go vet $IMPORT_PATH/cmd/reprojectbounds
+    - go vet $IMPORT_PATH/cmd/elastictest
 
   override:
     - go test $IMPORT_PATH/geotiff
@@ -84,3 +89,11 @@ deployment:
       - docker build -t scale-extract-bucket cmd/extractbucket
       - docker tag -f scale-extract-bucket openwhere/scale-extract-bucket:dev
       - docker push openwhere/scale-extract-bucket:dev
+      - cp filegrouper cmd/filegrouper
+      - docker build -t scale-file-grouper cmd/filegrouper
+      - docker tag -f scale-file-grouper openwhere/scale-file-grouper:dev
+      - docker push openwhere/scale-file-grouper:dev
+      - cp reprojectbounds cmd/reprojectbounds
+      - docker build -t scale-reproject cmd/reprojectbounds
+      - docker tag -f scale-reproject openwhere/scale-reproject:dev
+      - docker push openwhere/scale-reproject:dev

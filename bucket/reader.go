@@ -19,7 +19,7 @@ const (
 	ISO8601FORMAT = "20060102T150405Z"
 )
 
-func mineAllObjects(region, bucket, path string, svc *s3.S3) ([]*s3.Object, error) {
+func mineAllObjects(bucket, path string, svc *s3.S3) ([]*s3.Object, error) {
 	//	svc := s3.New(session.New(), &aws.Config{Region: aws.String(region)})
 	input := &s3.ListObjectsInput{Bucket: aws.String(bucket), Prefix: aws.String(path)}
 	if path == "/" {
@@ -106,7 +106,7 @@ func (bf *BucketFile) Paths() ([]string, string) {
 
 func readBucket(region, dir string, svc *s3.S3) ([]*BucketFile, error) {
 	bucket, prefix := ParsePath(dir)
-	objects, err := mineAllObjects(region, bucket, prefix, svc)
+	objects, err := mineAllObjects(bucket, prefix, svc)
 	if err != nil {
 		return []*BucketFile{}, err
 	}
@@ -157,6 +157,10 @@ type DirItem struct {
 	Children map[string]*DirItem
 	Keys     []*BucketFile
 	Size     int64
+}
+
+func (di *DirItem) GetKeys() []*BucketFile {
+	return di.Keys
 }
 
 func NewDirItem(name string) *DirItem {

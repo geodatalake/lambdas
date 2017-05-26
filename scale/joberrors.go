@@ -18,7 +18,7 @@ func WriteStderr(s string) {
 
 func WriteJson(writer io.Writer, objectToWrite interface{}) {
 	if jErr := json.NewEncoder(writer).Encode(objectToWrite); jErr != nil {
-		WriteStderr(fmt.Sprintf("Error wrinting JSON: %v", jErr))
+		WriteStderr(fmt.Sprintf("Error printing JSON: %v", jErr))
 		os.Exit(30)
 	}
 }

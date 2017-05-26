@@ -137,12 +137,17 @@ func isRootExt(ext string) bool {
 	}
 }
 
-func Extract(di *bucket.DirItem) ([]*ExtractFile, bool) {
+type Extractable interface {
+	GetKeys() []*bucket.BucketFile
+}
+
+func Extract(di Extractable) ([]*ExtractFile, bool) {
 	dirFiles := make(map[string]*bucket.BucketFile)
 	baseNames := NewStringBucketSet()
-	retval := make([]*ExtractFile, 0, len(di.Keys))
+	keys := di.GetKeys()
+	retval := make([]*ExtractFile, 0, len(keys))
 	// First split out files with extensions, add others
-	for _, f := range di.Keys {
+	for _, f := range keys {
 		_, name := path.Split(f.Key)
 		dirFiles[name] = f
 		if base, ext, ok := getExtension(name); ok {
