@@ -1,17 +1,13 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
-	"net/http"
 	"os"
 	"path"
-	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -42,7 +38,7 @@ func produceJobTypeBucket() []byte {
 		AddKV("author_name", "Steve_Ingram").
 		AddKV("author_url", "http://www.example.com").
 		AddKV("is_operational", true).
-		AddKV("icon_code", "f2b7").
+		AddKV("icon_code", "f09e").
 		AddKV("docker_privileged", false).
 		AddKV("docker_image", "openwhere/scale-detector:dev").
 		AddKV("priority", 230).
@@ -61,7 +57,7 @@ func produceJobTypeBucket() []byte {
 					AddKV("media_type", "application/json").
 					AddKV("required", true).
 					AddKV("type", "files").
-					AddKV("name", "extract_instructions"))).
+					AddKV("name", "dir_request"))).
 			AppendArray("input_data", array().
 				Add(doc().
 					AppendArray("media_types", array().
@@ -97,37 +93,10 @@ func createErrors(url, token string) {
 	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_cluster_request", "Invalid Cluster Request", "Unknown cluster request", existing))
 }
 
-func register(url, token string, data []byte) {
-	client := http.Client{}
-	urlStr := fmt.Sprintf("%s/service/scale/api/v5/job-types/", url)
-	req, err := http.NewRequest("POST", urlStr, bytes.NewBuffer(data))
-	req.Header.Add("Authorization", fmt.Sprintf("token=%s", token))
-	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("Cache-Control", "no-cache")
-	req.Header.Add("Accept", "application/json")
-	resp, err := client.Do(req)
-	if err != nil {
-		scale.WriteStderr(fmt.Sprintf("Error registering job type: %v", err))
-		os.Exit(-1)
-	}
-	if resp.StatusCode != 201 {
-		b, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			scale.WriteStderr(err.Error())
-			os.Exit(-1)
-		}
-		resp.Body.Close()
-		fmt.Println(resp.Status, string(b))
-	} else {
-		resp.Body.Close()
-		fmt.Println("Create Job Type Response:", resp.Status)
-	}
-}
-
 func registerJobTypes(url, token string) {
 	// Errors have to registered prior to job type ref'ing those errors
 	createErrors(url, token)
-	register(url, token, produceJobTypeBucket())
+	scale.RegisterJobType(url, token, produceJobTypeBucket())
 }
 
 //  Errors:
@@ -142,7 +111,6 @@ func main() {
 	jobType := flag.Bool("jt", false, "Output job type JSON to stdout")
 	register := flag.String("register", "", "DC/OS Url, requires token")
 	token := flag.String("token", "", "DC/OS token, required for register option")
-	region := flag.String("region", "us-west-2", "Region for S3 writes")
 	help := flag.Bool("h", false, "This help screen")
 	flag.Parse()
 
@@ -176,23 +144,6 @@ func main() {
 		}
 		input := args[0]
 		outdir := args[1]
-		s3out := false
-		var s3svc *s3.S3
-		var myBucket string
-		var myPath string
-		if strings.HasPrefix(outdir, "s3://") {
-			raw := outdir[5:]
-			ind := strings.Index(raw, "/")
-			if ind == -1 {
-				myBucket = raw
-				myPath = ""
-			} else {
-				myBucket = raw[0:ind]
-				myPath = raw[ind+1:]
-			}
-			s3svc = s3.New(session.New(), &aws.Config{Region: aws.String(*region)})
-			s3out = true
-		}
 		f, err := os.Open(input)
 		if err != nil {
 			scale.WriteStderr(fmt.Sprintf("Unable to open %s", input))
@@ -212,11 +163,8 @@ func main() {
 		outData := new(scale.OutputData)
 		switch cr.RequestType {
 		case geoindex.ScanBucket:
-			// Load session from shared config
-			sess := session.Must(session.NewSessionWithOptions(session.Options{
-				SharedConfigState: session.SharedConfigEnable,
-			}))
-			svc := s3.New(sess, &aws.Config{Region: region})
+			sess := session.Must(session.NewSession())
+			svc := s3.New(sess, &aws.Config{Region: aws.String(cr.Bucket.Region)})
 			root, err2 := bucket.ListBucketStructure(cr.Bucket.Region, cr.Bucket.Bucket, svc)
 			if err2 != nil {
 				scale.WriteStderr(err2.Error())
@@ -225,7 +173,7 @@ func main() {
 			iter := root.Iterate()
 			count := 0
 			size := int64(0)
-			allEXtracts := make([]*scale.OutputFile, 0, 128)
+			allExtracts := make([]*scale.OutputFile, 0, 128)
 			for {
 				di, ok := iter.Next()
 				if !ok {
@@ -234,74 +182,30 @@ func main() {
 				if len(di.Keys) > 0 {
 					count += len(di.Keys)
 					size += di.Size
-					files, ok := geoindex.Extract(di)
-					if ok {
-						for _, ef := range files {
-							var writer io.WriteCloser
-							var outName string
-							if s3out {
-								outName = path.Join(myPath, fmt.Sprintf("extract-file-%s.json", uuid.NewV4().String()))
-								writer = bucket.NewS3Writer(bucket.NewBucketFile(*region, myBucket, outName, "", 0), s3svc)
-							} else {
-								outName = path.Join(outdir, fmt.Sprintf("extract-file-%s.json", uuid.NewV4().String()))
-								if f, err := os.Create(outName); err != nil {
-									scale.WriteStderr(fmt.Sprintf("Error writing %s: %v", outName, err))
-									os.Exit(20)
-								} else {
-									writer = f
-								}
-							}
-							scale.WriteJson(writer, ef)
-							writer.Close()
-							myOutputFile := &scale.OutputFile{
-								Path: outName,
-							}
-							allEXtracts = append(allEXtracts, myOutputFile)
-						}
+					crOut := new(geoindex.ClusterRequest)
+					crOut.RequestType = geoindex.GroupFiles
+					crOut.DirFiles = &geoindex.DirRequest{Files: di.Keys}
+					outName := path.Join(outdir, fmt.Sprintf("dir-request-%s.json", uuid.NewV4()))
+					scale.WriteJsonFile(outName, crOut)
+					myOutputFile := &scale.OutputFile{
+						Path: outName,
 					}
+					allExtracts = append(allExtracts, myOutputFile)
 				}
 			}
 			log.Println("Processed", humanize.Comma(int64(count)), "items, size:", humanize.Bytes(uint64(size)))
-			outData.Name = "extract_instructions"
-			outData.Files = allEXtracts
+			outData.Name = "dir_request"
+			outData.Files = allExtracts
 		default:
 			scale.WriteStderr(fmt.Sprintf("Unknown request type %d", cr.RequestType))
 			os.Exit(70)
 		}
 		manifest := scale.FormatManifest([]*scale.OutputData{outData}, nil)
-		var writer io.WriteCloser
-		var outName string
-		if s3out {
-			outName = path.Join(myPath, "results_manifest.json")
-			writer = bucket.NewS3Writer(bucket.NewBucketFile(*region, myBucket, outName, "", 0), s3svc)
-		} else {
-			outName = path.Join(outdir, "results_manifest.json")
-			if f, err := os.Create(outName); err != nil {
-				scale.WriteStderr(fmt.Sprintf("Error writing %s: %v", outName, err))
-				os.Exit(20)
-			} else {
-				writer = f
-			}
-		}
-		scale.WriteJson(writer, manifest)
+		scale.WriteJsonFile(path.Join(outdir, "results_manifest.json"), manifest)
 		log.Println("Wrote", manifest.OutputData)
 		os.Exit(0)
 	} else {
-		args := flag.Args()
-		for _, arg := range args {
-			f, err := os.Open(arg)
-			if err != nil {
-				log.Println(err)
-				os.Exit(10)
-			}
-			bounds, prj, typ, err1 := geoindex.DetectType(f)
-			f.Close()
-			if err1 != nil {
-				log.Println(err1)
-				os.Exit(20)
-			}
-			log.Println(bounds, prj, typ)
-		}
+		// TODO: Fill in dev
 		os.Exit(0)
 	}
 }
