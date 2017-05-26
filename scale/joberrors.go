@@ -23,6 +23,16 @@ func WriteJson(writer io.Writer, objectToWrite interface{}) {
 	}
 }
 
+func WriteJsonFile(filename string, objectToWrite interface{}) {
+	if f, err := os.Create(filename); err != nil {
+		WriteStderr(fmt.Sprintf("Error creating output file %s: %v", filename, err))
+		os.Exit(20)
+	} else {
+		defer f.Close()
+		WriteJson(f, objectToWrite)
+	}
+}
+
 func doc() *elastichelper.Document {
 	return elastichelper.NewDoc()
 }
