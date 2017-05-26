@@ -5,11 +5,17 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"path"
+	"strings"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/dustin/go-humanize"
 	"github.com/geodatalake/lambdas/bucket"
 	"github.com/geodatalake/lambdas/elastichelper"
@@ -136,6 +142,7 @@ func main() {
 	jobType := flag.Bool("jt", false, "Output job type JSON to stdout")
 	register := flag.String("register", "", "DC/OS Url, requires token")
 	token := flag.String("token", "", "DC/OS token, required for register option")
+	region := flag.String("region", "us-west-2", "Region for S3 writes")
 	help := flag.Bool("h", false, "This help screen")
 	flag.Parse()
 
@@ -169,6 +176,23 @@ func main() {
 		}
 		input := args[0]
 		outdir := args[1]
+		s3out := false
+		var s3svc *s3.S3
+		var myBucket string
+		var myPath string
+		if strings.HasPrefix(outdir, "s3://") {
+			raw := outdir[5:]
+			ind := strings.Index(raw, "/")
+			if ind == -1 {
+				myBucket = raw
+				myPath = ""
+			} else {
+				myBucket = raw[0:ind]
+				myPath = raw[ind+1:]
+			}
+			s3svc = s3.New(session.New(), &aws.Config{Region: aws.String(*region)})
+			s3out = true
+		}
 		f, err := os.Open(input)
 		if err != nil {
 			scale.WriteStderr(fmt.Sprintf("Unable to open %s", input))
@@ -188,7 +212,12 @@ func main() {
 		outData := new(scale.OutputData)
 		switch cr.RequestType {
 		case geoindex.ScanBucket:
-			root, err2 := bucket.ListBucketStructure(cr.Bucket.Region, cr.Bucket.Bucket)
+			// Load session from shared config
+			sess := session.Must(session.NewSessionWithOptions(session.Options{
+				SharedConfigState: session.SharedConfigEnable,
+			}))
+			svc := s3.New(sess, &aws.Config{Region: region})
+			root, err2 := bucket.ListBucketStructure(cr.Bucket.Region, cr.Bucket.Bucket, svc)
 			if err2 != nil {
 				scale.WriteStderr(err2.Error())
 				os.Exit(50)
@@ -208,8 +237,22 @@ func main() {
 					files, ok := geoindex.Extract(di)
 					if ok {
 						for _, ef := range files {
-							outName := fmt.Sprintf("%s/extract-file-%s.json", outdir, uuid.NewV4().String())
-							scale.WriteJson(outName, ef)
+							var writer io.WriteCloser
+							var outName string
+							if s3out {
+								outName = path.Join(myPath, fmt.Sprintf("extract-file-%s.json", uuid.NewV4().String()))
+								writer = bucket.NewS3Writer(bucket.NewBucketFile(*region, myBucket, outName, "", 0), s3svc)
+							} else {
+								outName = path.Join(outdir, fmt.Sprintf("extract-file-%s.json", uuid.NewV4().String()))
+								if f, err := os.Create(outName); err != nil {
+									scale.WriteStderr(fmt.Sprintf("Error writing %s: %v", outName, err))
+									os.Exit(20)
+								} else {
+									writer = f
+								}
+							}
+							scale.WriteJson(writer, ef)
+							writer.Close()
 							myOutputFile := &scale.OutputFile{
 								Path: outName,
 							}
@@ -226,7 +269,21 @@ func main() {
 			os.Exit(70)
 		}
 		manifest := scale.FormatManifest([]*scale.OutputData{outData}, nil)
-		scale.WriteJson(fmt.Sprintf("%s/results_manifest.json", outdir), manifest)
+		var writer io.WriteCloser
+		var outName string
+		if s3out {
+			outName = path.Join(myPath, "results_manifest.json")
+			writer = bucket.NewS3Writer(bucket.NewBucketFile(*region, myBucket, outName, "", 0), s3svc)
+		} else {
+			outName = path.Join(outdir, "results_manifest.json")
+			if f, err := os.Create(outName); err != nil {
+				scale.WriteStderr(fmt.Sprintf("Error writing %s: %v", outName, err))
+				os.Exit(20)
+			} else {
+				writer = f
+			}
+		}
+		scale.WriteJson(writer, manifest)
 		log.Println("Wrote", manifest.OutputData)
 		os.Exit(0)
 	} else {
