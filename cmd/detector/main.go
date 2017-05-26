@@ -215,14 +215,8 @@ func main() {
 				data.Type = typ
 			}
 			ended := time.Now().UTC()
-			outName := fmt.Sprintf("%s/bounds_result.json", outdir)
-			if f, err := os.Create(outName); err != nil {
-				scale.WriteStderr(fmt.Sprintf("Error writing %s: %v", outName, err))
-				os.Exit(20)
-			} else {
-				scale.WriteJson(f, data)
-				f.Close()
-			}
+			outName := path.Join(outdir, "bounds_result.json")
+			scale.WriteJsonFile(outName, data)
 			outData.Name = "bounds_result"
 			outData.File = &scale.OutputFile{Path: outName, GeoMetadata: &scale.GeoMetadata{Started: started.Format(bucket.ISO8601FORMAT), Ended: ended.Format(bucket.ISO8601FORMAT)}}
 		default:
@@ -231,14 +225,8 @@ func main() {
 		}
 		manifest := scale.FormatManifest([]*scale.OutputData{outData}, nil)
 		outName := path.Join(outdir, "results_manifest.json")
-		if f, err := os.Create(outName); err != nil {
-			scale.WriteStderr(fmt.Sprintf("Error writing %s: %v", outName, err))
-			os.Exit(20)
-		} else {
-			scale.WriteJson(f, manifest)
-			f.Close()
-			log.Println("Wrote", manifest.OutputData)
-		}
+		scale.WriteJsonFile(outName, manifest)
+		log.Println("Wrote", manifest.OutputData)
 		os.Exit(0)
 	} else {
 		args := flag.Args()
