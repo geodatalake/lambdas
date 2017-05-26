@@ -16,6 +16,8 @@ import (
 	"path"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws/session"
+
 	"github.com/geodatalake/lambdas/bucket"
 	"github.com/geodatalake/lambdas/elastichelper"
 	"github.com/geodatalake/lambdas/geoindex"
@@ -200,7 +202,10 @@ func main() {
 			if ext := path.Ext(file.Key); ext != "" {
 				data.Extension = ext
 			}
-			stream := bf.Stream()
+			sess := session.Must(session.NewSessionWithOptions(session.Options{
+				SharedConfigState: session.SharedConfigEnable,
+			}))
+			stream := bf.Stream(sess)
 			bounds, prj, typ, err := geoindex.DetectType(stream)
 			if err != nil {
 				log.Println("Not a geo")
@@ -211,7 +216,13 @@ func main() {
 			}
 			ended := time.Now().UTC()
 			outName := fmt.Sprintf("%s/bounds_result.json", outdir)
-			scale.WriteJson(outName, data)
+			if f, err := os.Create(outName); err != nil {
+				scale.WriteStderr(fmt.Sprintf("Error writing %s: %v", outName, err))
+				os.Exit(20)
+			} else {
+				scale.WriteJson(f, data)
+				f.Close()
+			}
 			outData.Name = "bounds_result"
 			outData.File = &scale.OutputFile{Path: outName, GeoMetadata: &scale.GeoMetadata{Started: started.Format(bucket.ISO8601FORMAT), Ended: ended.Format(bucket.ISO8601FORMAT)}}
 		default:
@@ -219,8 +230,15 @@ func main() {
 			os.Exit(70)
 		}
 		manifest := scale.FormatManifest([]*scale.OutputData{outData}, nil)
-		scale.WriteJson(fmt.Sprintf("%s/results_manifest.json", outdir), manifest)
-		log.Println("Wrote", manifest.OutputData)
+		outName := path.Join(outdir, "results_manifest.json")
+		if f, err := os.Create(outName); err != nil {
+			scale.WriteStderr(fmt.Sprintf("Error writing %s: %v", outName, err))
+			os.Exit(20)
+		} else {
+			scale.WriteJson(f, manifest)
+			f.Close()
+			log.Println("Wrote", manifest.OutputData)
+		}
 		os.Exit(0)
 	} else {
 		args := flag.Args()
