@@ -21,7 +21,7 @@ func check( vpt, opt geom.Point, t *testing.T) {
 	}
 }
 
-func TestConversion (t *testing.T) {
+func TestConversionEPSG (t *testing.T) {
 
 
 	fmt.Println("Calculating Bounding box")
@@ -57,6 +57,72 @@ func TestConversion (t *testing.T) {
 
 
 	}
+
+
+}
+
+func TestConversionTitle (t *testing.T) {
+
+
+	fmt.Println("Calculating Bounding box for Title String")
+	s := fmt.Sprintf("NAD27(76) / UTM zone 16N")
+	fmt.Println("Code is " + s)
+
+	var validPoints []geom.Point
+	validPoints = append(validPoints, geom.Point{ X: -88.0223336890, Y: 36.9355647985})
+	validPoints = append(validPoints, geom.Point{ X: -88.0216107159, Y: 36.8813675603})
+	validPoints = append(validPoints, geom.Point{ X: -87.9494215714, Y: 36.9361700862})
+	validPoints = append(validPoints, geom.Point{ X: -87.9487501406, Y: 36.8819716642})
+
+	var testPoints []geom.Point
+
+	testPoints = append(testPoints, geom.Point{X: 408956.500000, Y:4088009.500000 })
+	testPoints = append(testPoints, geom.Point{X: 408956.500000, Y:4081996.500000 })
+	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4088009.500000 })
+	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4081996.500000 })
+
+	outpoints := ConvertPoints( s, testPoints)
+
+	iCount := len(outpoints)
+
+	for i := 0; i < iCount; i++ {
+
+
+		var sResult1 string = fmt.Sprintf("%.10f", outpoints[i].X )
+		var sResult2 string = fmt.Sprintf("%.10f", outpoints[i].Y )
+
+		fmt.Println ( sResult1  + "," +  sResult2 )
+
+		check( validPoints[i], outpoints[i], t)
+
+
+	}
+
+
+}
+
+func TestConversionTitleBogusTitle (t *testing.T) {
+
+
+	fmt.Println("Calculating Bounding box for Title String")
+	s := fmt.Sprintf("NAD64(76) UTM zone 16N")
+	fmt.Println("Code is " + s)
+
+	var testPoints []geom.Point
+
+	testPoints = append(testPoints, geom.Point{X: 408956.500000, Y:4088009.500000 })
+	testPoints = append(testPoints, geom.Point{X: 408956.500000, Y:4081996.500000 })
+	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4088009.500000 })
+	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4081996.500000 })
+
+	outpoints := ConvertPoints( s, testPoints)
+
+	if outpoints == nil {
+		fmt.Println( "Passed")
+	} else {
+		t.Errorf(fmt.Sprintf("Expected no output points"))
+	}
+
 
 
 }
