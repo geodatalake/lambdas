@@ -6,6 +6,7 @@ package bucket
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -46,6 +47,40 @@ func (r *S3Reader) ReadAt(p []byte, off int64) (int, error) {
 
 func NewS3Reader(file *BucketFile, svc *s3.S3) *S3Reader {
 	return &S3Reader{file: file, svc: svc}
+}
+
+// Implements io.WriteCloser
+type S3Writer struct {
+	file *BucketFile
+	svc  *s3.S3
+	buf  bytes.Buffer
+}
+
+func NewS3Writer(bf *BucketFile, svc *s3.S3) *S3Writer {
+	return &S3Writer{file: bf, svc: svc}
+}
+
+func (w *S3Writer) Write(p []byte) (int, error) {
+	if w.file == nil {
+		return 0, errors.New("Writer is closed")
+	}
+	return w.buf.Write(p)
+}
+
+func (w *S3Writer) Close() error {
+	if w.file != nil {
+		o := new(s3.PutObjectInput)
+		o.Body = NewByteBuffer(w.buf.Bytes())
+		o.Bucket = aws.String(w.file.Bucket)
+		o.Key = aws.String(w.file.Key)
+		_, err := w.svc.PutObject(o)
+		w.buf.Reset()
+		w.file = nil
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type ChunkReader struct {

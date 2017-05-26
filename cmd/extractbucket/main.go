@@ -1,7 +1,3 @@
-// Copyright 2017 Blacksky. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package main
 
 import (
@@ -9,19 +5,23 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"path"
-	"time"
+	"strings"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
-
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/dustin/go-humanize"
 	"github.com/geodatalake/lambdas/bucket"
 	"github.com/geodatalake/lambdas/elastichelper"
 	"github.com/geodatalake/lambdas/geoindex"
 	"github.com/geodatalake/lambdas/scale"
+	"github.com/satori/go.uuid"
 )
 
 func doc() *elastichelper.Document {
@@ -32,44 +32,44 @@ func array() *elastichelper.ArrayBuilder {
 	return elastichelper.StartArray()
 }
 
-func produceJobTypeExtract() []byte {
+func produceJobTypeBucket() []byte {
 	data := doc().
-		AddKV("name", "detect-geo").
+		AddKV("name", "open-bucket").
 		AddKV("version", "1.0.0").
-		AddKV("title", "Detect Geo").
-		AddKV("description", "Extracts bounds and projection from geo files").
+		AddKV("title", "Open Bucket Geo").
+		AddKV("description", "Opens a S3 Bucket by directory").
 		AddKV("category", "testing").
 		AddKV("author_name", "Steve_Ingram").
 		AddKV("author_url", "http://www.example.com").
 		AddKV("is_operational", true).
-		AddKV("icon_code", "f279").
+		AddKV("icon_code", "f2b7").
 		AddKV("docker_privileged", false).
 		AddKV("docker_image", "openwhere/scale-detector:dev").
 		AddKV("priority", 230).
 		AddKV("max_tries", 3).
 		AddKV("cpus_required", 1.0).
-		AddKV("mem_required", 1024.0).
+		AddKV("mem_required", 8192.0).
 		AddKV("disk_out_const_required", 0.0).
 		AddKV("disk_out_mult_required", 0.0).
 		Append("interface", doc().
 			AddKV("version", "1.1").
 			AddKV("command", "/opt/detect/detector").
-			AddKV("command_arguments", "${extract_instructions} ${job_output_dir}").
+			AddKV("command_arguments", "${open_bucket} ${job_output_dir}").
 			AddKV("shared_resources", []map[string]interface{}{}).
 			AppendArray("output_data", array().
 				Add(doc().
 					AddKV("media_type", "application/json").
 					AddKV("required", true).
-					AddKV("type", "file").
-					AddKV("name", "bounds_result"))).
+					AddKV("type", "files").
+					AddKV("name", "extract_instructions"))).
 			AppendArray("input_data", array().
 				Add(doc().
 					AppendArray("media_types", array().
 						Add("application/json")).
 					AddKV("required", true).
-					AddKV("partial", true).
+					AddKV("partial", false).
 					AddKV("type", "file").
-					AddKV("name", "extract_instructions")))).
+					AddKV("name", "open_bucket")))).
 		Append("error_mapping", doc().
 			AddKV("version", "1.0").
 			Append("exit_codes", doc().
@@ -127,7 +127,7 @@ func register(url, token string, data []byte) {
 func registerJobTypes(url, token string) {
 	// Errors have to registered prior to job type ref'ing those errors
 	createErrors(url, token)
-	register(url, token, produceJobTypeExtract())
+	register(url, token, produceJobTypeBucket())
 }
 
 //  Errors:
@@ -142,6 +142,7 @@ func main() {
 	jobType := flag.Bool("jt", false, "Output job type JSON to stdout")
 	register := flag.String("register", "", "DC/OS Url, requires token")
 	token := flag.String("token", "", "DC/OS token, required for register option")
+	region := flag.String("region", "us-west-2", "Region for S3 writes")
 	help := flag.Bool("h", false, "This help screen")
 	flag.Parse()
 
@@ -151,7 +152,7 @@ func main() {
 	}
 
 	if *jobType {
-		fmt.Println(string(produceJobTypeExtract()))
+		fmt.Println(string(produceJobTypeBucket()))
 		os.Exit(0)
 	}
 
@@ -168,7 +169,6 @@ func main() {
 	}
 
 	if !*dev {
-		started := time.Now().UTC()
 		args := flag.Args()
 		if len(args) != 2 {
 			scale.WriteStderr(fmt.Sprintf("Input arguments [%d] are not 2", len(args)))
@@ -176,6 +176,23 @@ func main() {
 		}
 		input := args[0]
 		outdir := args[1]
+		s3out := false
+		var s3svc *s3.S3
+		var myBucket string
+		var myPath string
+		if strings.HasPrefix(outdir, "s3://") {
+			raw := outdir[5:]
+			ind := strings.Index(raw, "/")
+			if ind == -1 {
+				myBucket = raw
+				myPath = ""
+			} else {
+				myBucket = raw[0:ind]
+				myPath = raw[ind+1:]
+			}
+			s3svc = s3.New(session.New(), &aws.Config{Region: aws.String(*region)})
+			s3out = true
+		}
 		f, err := os.Open(input)
 		if err != nil {
 			scale.WriteStderr(fmt.Sprintf("Unable to open %s", input))
@@ -194,38 +211,79 @@ func main() {
 		}
 		outData := new(scale.OutputData)
 		switch cr.RequestType {
-		case geoindex.ExtractFileType:
-			file := cr.File.File
-			log.Println("Processing", cr.File.File)
-			bf := file.AsBucketFile()
-			data := &scale.BoundsResult{Bucket: bf.Bucket, Key: bf.Key, Region: bf.Region, LastModified: bf.LastModified}
-			if ext := path.Ext(file.Key); ext != "" {
-				data.Extension = ext
-			}
+		case geoindex.ScanBucket:
+			// Load session from shared config
 			sess := session.Must(session.NewSessionWithOptions(session.Options{
 				SharedConfigState: session.SharedConfigEnable,
 			}))
-			stream := bf.Stream(sess)
-			bounds, prj, typ, err := geoindex.DetectType(stream)
-			if err != nil {
-				log.Println("Not a geo")
-			} else {
-				data.Bounds = bounds
-				data.Prj = prj
-				data.Type = typ
+			svc := s3.New(sess, &aws.Config{Region: region})
+			root, err2 := bucket.ListBucketStructure(cr.Bucket.Region, cr.Bucket.Bucket, svc)
+			if err2 != nil {
+				scale.WriteStderr(err2.Error())
+				os.Exit(50)
 			}
-			ended := time.Now().UTC()
-			outName := path.Join(outdir, "bounds_result.json")
-			scale.WriteJsonFile(outName, data)
-			outData.Name = "bounds_result"
-			outData.File = &scale.OutputFile{Path: outName, GeoMetadata: &scale.GeoMetadata{Started: started.Format(bucket.ISO8601FORMAT), Ended: ended.Format(bucket.ISO8601FORMAT)}}
+			iter := root.Iterate()
+			count := 0
+			size := int64(0)
+			allEXtracts := make([]*scale.OutputFile, 0, 128)
+			for {
+				di, ok := iter.Next()
+				if !ok {
+					break
+				}
+				if len(di.Keys) > 0 {
+					count += len(di.Keys)
+					size += di.Size
+					files, ok := geoindex.Extract(di)
+					if ok {
+						for _, ef := range files {
+							var writer io.WriteCloser
+							var outName string
+							if s3out {
+								outName = path.Join(myPath, fmt.Sprintf("extract-file-%s.json", uuid.NewV4().String()))
+								writer = bucket.NewS3Writer(bucket.NewBucketFile(*region, myBucket, outName, "", 0), s3svc)
+							} else {
+								outName = path.Join(outdir, fmt.Sprintf("extract-file-%s.json", uuid.NewV4().String()))
+								if f, err := os.Create(outName); err != nil {
+									scale.WriteStderr(fmt.Sprintf("Error writing %s: %v", outName, err))
+									os.Exit(20)
+								} else {
+									writer = f
+								}
+							}
+							scale.WriteJson(writer, ef)
+							writer.Close()
+							myOutputFile := &scale.OutputFile{
+								Path: outName,
+							}
+							allEXtracts = append(allEXtracts, myOutputFile)
+						}
+					}
+				}
+			}
+			log.Println("Processed", humanize.Comma(int64(count)), "items, size:", humanize.Bytes(uint64(size)))
+			outData.Name = "extract_instructions"
+			outData.Files = allEXtracts
 		default:
 			scale.WriteStderr(fmt.Sprintf("Unknown request type %d", cr.RequestType))
 			os.Exit(70)
 		}
 		manifest := scale.FormatManifest([]*scale.OutputData{outData}, nil)
-		outName := path.Join(outdir, "results_manifest.json")
-		scale.WriteJsonFile(outName, manifest)
+		var writer io.WriteCloser
+		var outName string
+		if s3out {
+			outName = path.Join(myPath, "results_manifest.json")
+			writer = bucket.NewS3Writer(bucket.NewBucketFile(*region, myBucket, outName, "", 0), s3svc)
+		} else {
+			outName = path.Join(outdir, "results_manifest.json")
+			if f, err := os.Create(outName); err != nil {
+				scale.WriteStderr(fmt.Sprintf("Error writing %s: %v", outName, err))
+				os.Exit(20)
+			} else {
+				writer = f
+			}
+		}
+		scale.WriteJson(writer, manifest)
 		log.Println("Wrote", manifest.OutputData)
 		os.Exit(0)
 	} else {

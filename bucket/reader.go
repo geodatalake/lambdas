@@ -19,8 +19,8 @@ const (
 	ISO8601FORMAT = "20060102T150405Z"
 )
 
-func mineAllObjects(region, bucket, path string) ([]*s3.Object, error) {
-	svc := s3.New(session.New(), &aws.Config{Region: aws.String(region)})
+func mineAllObjects(region, bucket, path string, svc *s3.S3) ([]*s3.Object, error) {
+	//	svc := s3.New(session.New(), &aws.Config{Region: aws.String(region)})
 	input := &s3.ListObjectsInput{Bucket: aws.String(bucket), Prefix: aws.String(path)}
 	if path == "/" {
 		input = &s3.ListObjectsInput{Bucket: aws.String(bucket)}
@@ -104,9 +104,9 @@ func (bf *BucketFile) Paths() ([]string, string) {
 	return dirs, file
 }
 
-func readBucket(region, dir string) ([]*BucketFile, error) {
+func readBucket(region, dir string, svc *s3.S3) ([]*BucketFile, error) {
 	bucket, prefix := ParsePath(dir)
-	objects, err := mineAllObjects(region, bucket, prefix)
+	objects, err := mineAllObjects(region, bucket, prefix, svc)
 	if err != nil {
 		return []*BucketFile{}, err
 	}
@@ -124,11 +124,11 @@ func readBucket(region, dir string) ([]*BucketFile, error) {
 	return retval, nil
 }
 
-func ListBucketStructure(region, bucket string) (*DirItem, error) {
+func ListBucketStructure(region, bucket string, svc *s3.S3) (*DirItem, error) {
 	if !strings.HasSuffix(bucket, "/") {
 		bucket = bucket + "/"
 	}
-	bfs, err := readBucket(region, bucket)
+	bfs, err := readBucket(region, bucket, svc)
 	if err != nil {
 		return nil, err
 	}
@@ -282,8 +282,8 @@ func (sfr *S3FileReader) Size() int64 {
 // S3FileReader is completely reusable
 // This keeps requests down while allowing multiple readers
 // to access it for determining types
-func (bf *BucketFile) Stream() *S3FileReader {
-	svc := s3.New(session.New(), &aws.Config{Region: aws.String(bf.Region)})
+func (bf *BucketFile) Stream(sess *session.Session) *S3FileReader {
+	svc := s3.New(sess, &aws.Config{Region: aws.String(bf.Region)})
 	return &S3FileReader{
 		sectionReader: io.NewSectionReader(NewChunkReader(bf.Size, NewS3Reader(bf, svc)), 0, bf.Size)}
 }

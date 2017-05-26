@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -15,17 +16,20 @@ func WriteStderr(s string) {
 	os.Stderr.Write([]byte(s))
 }
 
-func WriteJson(filePath string, objectToWrite interface{}) {
-	if f, err := os.Create(filePath); err != nil {
-		WriteStderr(fmt.Sprintf("Error writing %s: %v", filePath, err))
+func WriteJson(writer io.Writer, objectToWrite interface{}) {
+	if jErr := json.NewEncoder(writer).Encode(objectToWrite); jErr != nil {
+		WriteStderr(fmt.Sprintf("Error wrinting JSON: %v", jErr))
+		os.Exit(30)
+	}
+}
+
+func WriteJsonFile(filename string, objectToWrite interface{}) {
+	if f, err := os.Create(filename); err != nil {
+		WriteStderr(fmt.Sprintf("Error creating output file %s: %v", filename, err))
 		os.Exit(20)
 	} else {
-		if jErr := json.NewEncoder(f).Encode(objectToWrite); jErr != nil {
-			f.Close()
-			WriteStderr(fmt.Sprintf("Error wrinting %s JSON: %v", filePath, jErr))
-			os.Exit(30)
-		}
-		f.Close()
+		defer f.Close()
+		WriteJson(f, objectToWrite)
 	}
 }
 
