@@ -10,7 +10,6 @@ import (
 	"path"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/dustin/go-humanize"
 	"github.com/geodatalake/lambdas/bucket"
@@ -69,6 +68,7 @@ func produceJobTypeBucket() []byte {
 		Append("error_mapping", doc().
 			AddKV("version", "1.0").
 			Append("exit_codes", doc().
+				AddKV("15", "bad_session").
 				AddKV("10", "bad_num_input").
 				AddKV("20", "open_input").
 				AddKV("30", "read_input").
@@ -85,6 +85,7 @@ func produceJobTypeBucket() []byte {
 
 func createErrors(url, token string) {
 	existing := scale.GatherExistingErrors(url, token)
+	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_session", "Bad AWS Session", "AWS Session failed to be created", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_num_input", "Bad input cardinality", "Bad number of input arguments", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("open_input", "Failed to Open input", "Unable to open input", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("read_input", "Failed to Read input", "Unable to read input", existing))
@@ -101,6 +102,7 @@ func registerJobTypes(url, token string) {
 
 //  Errors:
 // 10 Bad number of input arguments
+// 15 Bad session
 // 20 Unable to open input
 // 30 Unable to read input
 // 40 Unable to marshal cluster request
@@ -163,7 +165,11 @@ func main() {
 		outData := new(scale.OutputData)
 		switch cr.RequestType {
 		case geoindex.ScanBucket:
-			sess := session.Must(session.NewSession())
+			sess, err := scale.GetAwsSession()
+			if err != nil {
+				scale.WriteStderr(err.Error())
+				os.Exit(15)
+			}
 			svc := s3.New(sess, &aws.Config{Region: aws.String(cr.Bucket.Region)})
 			root, err2 := bucket.ListBucketStructure(cr.Bucket.Region, cr.Bucket.Bucket, svc)
 			if err2 != nil {

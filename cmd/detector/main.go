@@ -14,8 +14,6 @@ import (
 	"path"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws/session"
-
 	"github.com/geodatalake/lambdas/bucket"
 	"github.com/geodatalake/lambdas/elastichelper"
 	"github.com/geodatalake/lambdas/geoindex"
@@ -87,6 +85,7 @@ func produceJobTypeExtract() []byte {
 
 func createErrors(url, token string) {
 	existing := scale.GatherExistingErrors(url, token)
+	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_session", "Bad AWS Session", "AWS Session failed to be created", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_num_input", "Bad input cardinality", "Bad number of input arguments", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("open_input", "Failed to Open input", "Unable to open input", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("read_input", "Failed to Read input", "Unable to read input", existing))
@@ -103,6 +102,7 @@ func registerJobTypes(url, token string) {
 
 //  Errors:
 // 10 Bad number of input arguments
+// 15 Bad Aws Session
 // 20 Unable to open input
 // 30 Unable to read input
 // 40 Unable to marshal cluster request
@@ -173,7 +173,11 @@ func main() {
 			if ext := path.Ext(file.Key); ext != "" {
 				data.Extension = ext
 			}
-			sess := session.Must(session.NewSession())
+			sess, err := scale.GetAwsSession()
+			if err != nil {
+				scale.WriteStderr(err.Error())
+				os.Exit(15)
+			}
 			stream := bf.Stream(sess)
 			bounds, prj, typ, err := geoindex.DetectType(stream)
 			if err != nil {

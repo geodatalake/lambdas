@@ -6,6 +6,12 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/credentials/ec2rolecreds"
+	"github.com/aws/aws-sdk-go/aws/ec2metadata"
+	"github.com/aws/aws-sdk-go/aws/session"
 )
 
 func FormatManifest(output []*OutputData, parsed []*ParseResult) *ResultsManifest {
@@ -48,4 +54,25 @@ func RegisterJobType(url, token string, data []byte) {
 		resp.Body.Close()
 		fmt.Println("Create Job Type Response:", resp.Status)
 	}
+}
+
+func GetAwsSession() (*session.Session, error) {
+	sess, err := session.NewSession()
+	if err != nil {
+		return nil, fmt.Errorf("Unable to create initial session: %v", err)
+	}
+	creds := credentials.NewChainCredentials(
+		[]credentials.Provider{
+			&credentials.EnvProvider{},
+			&ec2rolecreds.EC2RoleProvider{
+				Client: ec2metadata.New(sess),
+			},
+		})
+	sess, errSess := session.NewSession(&aws.Config{
+		Credentials: creds,
+	})
+	if errSess != nil {
+		return nil, fmt.Errorf("Unable to create a session with credentials: %v", errSess)
+	}
+	return sess, nil
 }
