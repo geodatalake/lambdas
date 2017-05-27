@@ -97,3 +97,24 @@ deployment:
       - docker build -t scale-reproject cmd/reprojectbounds
       - docker tag -f scale-reproject openwhere/scale-reproject:dev
       - docker push openwhere/scale-reproject:dev
+
+    branch: develop
+    owner: owsi
+    commands:
+      - docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASSWORD
+      - cp detector cmd/detector
+      - docker build -t scale-detector cmd/detector
+      - docker tag -f scale-detector openwhere/scale-detector:dev
+      - docker push openwhere/scale-detector:dev
+      - cp extractbucket cmd/extractbucket
+      - docker build -t scale-extract-bucket cmd/extractbucket
+      - docker tag -f scale-extract-bucket openwhere/scale-extract-bucket:dev
+      - docker push openwhere/scale-extract-bucket:dev
+      - cp filegrouper cmd/filegrouper
+      - docker build -t scale-file-grouper cmd/filegrouper
+      - docker tag -f scale-file-grouper openwhere/scale-file-grouper:dev
+      - docker push openwhere/scale-file-grouper:dev
+      - cp reprojectbounds cmd/reprojectbounds
+      - docker build -t scale-reproject cmd/reprojectbounds
+      - docker tag -f scale-reproject openwhere/scale-reproject:dev
+      - docker push openwhere/scale-reproject:dev
