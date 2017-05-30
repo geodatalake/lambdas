@@ -4,16 +4,12 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
 	"path"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/dustin/go-humanize"
-	"github.com/geodatalake/lambdas/bucket"
 	"github.com/geodatalake/lambdas/elastichelper"
 	"github.com/geodatalake/lambdas/geoindex"
 	"github.com/geodatalake/lambdas/scale"
@@ -28,36 +24,36 @@ func array() *elastichelper.ArrayBuilder {
 	return elastichelper.StartArray()
 }
 
-func produceJobTypeBucket() []byte {
+func produceJobType() []byte {
 	data := doc().
-		AddKV("name", "open-bucket").
+		AddKV("name", "group-files").
 		AddKV("version", "1.0.0").
-		AddKV("title", "Open Bucket Geo").
-		AddKV("description", "Opens a S3 Bucket by directory").
+		AddKV("title", "File Grouper").
+		AddKV("description", "Groups a directory by basenames").
 		AddKV("category", "testing").
 		AddKV("author_name", "Steve_Ingram").
 		AddKV("author_url", "http://www.example.com").
 		AddKV("is_operational", true).
-		AddKV("icon_code", "f09e").
+		AddKV("icon_code", "f0b0").
 		AddKV("docker_privileged", false).
-		AddKV("docker_image", "openwhere/scale-detector:dev").
+		AddKV("docker_image", "openwhere/scale-grouper:dev").
 		AddKV("priority", 230).
 		AddKV("max_tries", 3).
 		AddKV("cpus_required", 1.0).
-		AddKV("mem_required", 8192.0).
+		AddKV("mem_required", 1024.0).
 		AddKV("disk_out_const_required", 0.0).
 		AddKV("disk_out_mult_required", 0.0).
 		Append("interface", doc().
 			AddKV("version", "1.1").
-			AddKV("command", "/opt/detect/detector").
-			AddKV("command_arguments", "${open_bucket} ${job_output_dir}").
+			AddKV("command", "/opt/grouper/filegrouper").
+			AddKV("command_arguments", "${dir_key} ${job_output_dir}").
 			AddKV("shared_resources", []map[string]interface{}{}).
 			AppendArray("output_data", array().
 				Add(doc().
 					AddKV("media_type", "application/json").
 					AddKV("required", true).
 					AddKV("type", "files").
-					AddKV("name", "dir_request"))).
+					AddKV("name", "extract_instructions"))).
 			AppendArray("input_data", array().
 				Add(doc().
 					AppendArray("media_types", array().
@@ -65,7 +61,7 @@ func produceJobTypeBucket() []byte {
 					AddKV("required", true).
 					AddKV("partial", false).
 					AddKV("type", "file").
-					AddKV("name", "open_bucket")))).
+					AddKV("name", "dir_key")))).
 		Append("error_mapping", doc().
 			AddKV("version", "1.0").
 			Append("exit_codes", doc().
@@ -96,7 +92,7 @@ func createErrors(url, token string) {
 func registerJobTypes(url, token string) {
 	// Errors have to registered prior to job type ref'ing those errors
 	createErrors(url, token)
-	scale.RegisterJobType(url, token, produceJobTypeBucket())
+	scale.RegisterJobType(url, token, produceJobType())
 }
 
 //  Errors:
@@ -106,6 +102,7 @@ func registerJobTypes(url, token string) {
 // 40 Unable to marshal cluster request
 // 50 Unable to read S3 bucket
 // 70 Unknown cluster request
+
 func main() {
 	dev := flag.Bool("dev", false, "Development flag, interpret input as image file")
 	jobType := flag.Bool("jt", false, "Output job type JSON to stdout")
@@ -120,7 +117,7 @@ func main() {
 	}
 
 	if *jobType {
-		fmt.Println(string(produceJobTypeBucket()))
+		fmt.Println(string(produceJobType()))
 		os.Exit(0)
 	}
 
@@ -161,41 +158,31 @@ func main() {
 			os.Exit(40)
 		}
 		outData := new(scale.OutputData)
+		allExtracts := make([]*scale.OutputFile, 0, 128)
 		switch cr.RequestType {
-		case geoindex.ScanBucket:
-			sess := session.Must(session.NewSession())
-			svc := s3.New(sess, &aws.Config{Region: aws.String(cr.Bucket.Region)})
-			root, err2 := bucket.ListBucketStructure(cr.Bucket.Region, cr.Bucket.Bucket, svc)
-			if err2 != nil {
-				scale.WriteStderr(err2.Error())
-				os.Exit(50)
-			}
-			iter := root.Iterate()
-			count := 0
-			size := int64(0)
-			allExtracts := make([]*scale.OutputFile, 0, 128)
-			for {
-				di, ok := iter.Next()
-				if !ok {
-					break
-				}
-				if len(di.Keys) > 0 {
-					count += len(di.Keys)
-					size += di.Size
-					crOut := new(geoindex.ClusterRequest)
-					crOut.RequestType = geoindex.GroupFiles
-					crOut.DirFiles = &geoindex.DirRequest{Files: di.Keys}
-					outName := path.Join(outdir, fmt.Sprintf("dir-request-%s.json", uuid.NewV4()))
-					scale.WriteJsonFile(outName, crOut)
+		case geoindex.GroupFiles:
+			files, ok := geoindex.Extract(cr.DirFiles)
+			if ok {
+				for _, ef := range files {
+					var writer io.WriteCloser
+					var outName string
+					outName = path.Join(outdir, fmt.Sprintf("extract-file-%s.json", uuid.NewV4().String()))
+					if f, err := os.Create(outName); err != nil {
+						scale.WriteStderr(fmt.Sprintf("Error writing %s: %v", outName, err))
+						os.Exit(20)
+					} else {
+						writer = f
+					}
+					scale.WriteJson(writer, ef)
+					writer.Close()
 					myOutputFile := &scale.OutputFile{
 						Path: outName,
 					}
 					allExtracts = append(allExtracts, myOutputFile)
 				}
+				outData.Name = "dir_request"
+				outData.Files = allExtracts
 			}
-			log.Println("Processed", humanize.Comma(int64(count)), "items, size:", humanize.Bytes(uint64(size)))
-			outData.Name = "dir_request"
-			outData.Files = allExtracts
 		default:
 			scale.WriteStderr(fmt.Sprintf("Unknown request type %d", cr.RequestType))
 			os.Exit(70)
@@ -203,9 +190,6 @@ func main() {
 		manifest := scale.FormatManifest([]*scale.OutputData{outData}, nil)
 		scale.WriteJsonFile(path.Join(outdir, "results_manifest.json"), manifest)
 		log.Println("Wrote", manifest.OutputData)
-		os.Exit(0)
-	} else {
-		// TODO: Fill in dev
 		os.Exit(0)
 	}
 }

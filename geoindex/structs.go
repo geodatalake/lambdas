@@ -66,17 +66,27 @@ type BucketRequest struct {
 	Region string `json:"region"`
 }
 
+type DirRequest struct {
+	Files []*bucket.BucketFile `json:"files"`
+}
+
+func (dr *DirRequest) GetKeys() []*bucket.BucketFile {
+	return dr.Files
+}
+
 type DcosRequest int
 
 const (
 	ScanBucket DcosRequest = iota
 	ExtractFileType
+	GroupFiles
 )
 
 type ClusterRequest struct {
 	RequestType DcosRequest    `json:"type"`
 	Bucket      *BucketRequest `json:"bucket,omitempty"`
 	File        *ExtractFile   `json:"file,omitempty"`
+	DirFiles    *DirRequest    `json:"dir,omitempty"`
 }
 
 func (cr *ClusterRequest) String() string {

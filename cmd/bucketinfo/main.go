@@ -7,6 +7,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/dustin/go-humanize"
 	"github.com/geodatalake/lambdas/bucket"
 )
@@ -21,7 +24,8 @@ func main() {
 	bucketUris := flag.Args()
 	for _, uri := range bucketUris {
 		log.Println(uri)
-		dirs, err := bucket.ListBucketStructure(*region, uri)
+		svc := s3.New(session.New(), &aws.Config{Region: region})
+		dirs, err := bucket.ListBucketStructure(*region, uri, svc)
 		output := make([]string, 0, 128)
 		totalItems := 0
 		totalSize := int64(0)

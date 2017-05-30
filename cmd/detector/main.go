@@ -5,13 +5,11 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net/http"
 	"os"
 	"path"
 	"time"
@@ -97,37 +95,10 @@ func createErrors(url, token string) {
 	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_cluster_request", "Invalid Cluster Request", "Unknown cluster request", existing))
 }
 
-func register(url, token string, data []byte) {
-	client := http.Client{}
-	urlStr := fmt.Sprintf("%s/service/scale/api/v5/job-types/", url)
-	req, err := http.NewRequest("POST", urlStr, bytes.NewBuffer(data))
-	req.Header.Add("Authorization", fmt.Sprintf("token=%s", token))
-	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("Cache-Control", "no-cache")
-	req.Header.Add("Accept", "application/json")
-	resp, err := client.Do(req)
-	if err != nil {
-		scale.WriteStderr(fmt.Sprintf("Error registering job type: %v", err))
-		os.Exit(-1)
-	}
-	if resp.StatusCode != 201 {
-		b, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			scale.WriteStderr(err.Error())
-			os.Exit(-1)
-		}
-		resp.Body.Close()
-		fmt.Println(resp.Status, string(b))
-	} else {
-		resp.Body.Close()
-		fmt.Println("Create Job Type Response:", resp.Status)
-	}
-}
-
 func registerJobTypes(url, token string) {
 	// Errors have to registered prior to job type ref'ing those errors
 	createErrors(url, token)
-	register(url, token, produceJobTypeExtract())
+	scale.RegisterJobType(url, token, produceJobTypeExtract())
 }
 
 //  Errors:
@@ -202,9 +173,7 @@ func main() {
 			if ext := path.Ext(file.Key); ext != "" {
 				data.Extension = ext
 			}
-			sess := session.Must(session.NewSessionWithOptions(session.Options{
-				SharedConfigState: session.SharedConfigEnable,
-			}))
+			sess := session.Must(session.NewSession())
 			stream := bf.Stream(sess)
 			bounds, prj, typ, err := geoindex.DetectType(stream)
 			if err != nil {
