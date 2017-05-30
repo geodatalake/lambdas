@@ -28,6 +28,7 @@ dependencies:
     - ln -s ${HOME}/${CIRCLE_PROJECT_REPONAME} ${HOME}/.go_workspace/src/github.com/geodatalake/
 
   post:
+    - go build $IMPORT_PATH_GEOM
     - go build $IMPORT_PATH/geotiff
     - go build $IMPORT_PATH/lidar
     - go build $IMPORT_PATH/bucket
