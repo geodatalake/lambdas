@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ import (
 	"github.com/geodatalake/lambdas/geoindex"
 	"github.com/geodatalake/lambdas/proj4support"
 	"github.com/geodatalake/lambdas/scale"
+	"github.com/satori/go.uuid"
 )
 
 func doc() *elastichelper.Document {
@@ -77,7 +79,6 @@ func produceJobType() []byte {
 				AddKV("30", "read_input").
 				AddKV("40", "marshal_failure")))
 	b, err := json.MarshalIndent(data.Build(), "", "  ")
-
 	if err != nil {
 		scale.WriteStderr(fmt.Sprintf("Error writing job type json: %v", err))
 		os.Exit(-1)
@@ -91,16 +92,13 @@ func createErrors(url, token string) {
 	scale.CreateScaleError(url, token, scale.ErrorDoc("open_input", "Failed to Open input", "Unable to open input", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("read_input", "Failed to Read input", "Unable to read input", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("marshal_failure", "Marshal JSON Failure", "Unable to marshal cluster request", existing))
-	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_s3_read", "Failed S3 Bucket read", "Unable to read S3 bucket", existing))
-	scale.CreateScaleError(url, token, scale.ErrorDoc("not_geo", "Not a Geo File", "Unable to detect file type", existing))
-	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_cluster_request", "Invalid Cluster Request", "Unknown cluster request", existing))
 }
 
 //  Errors:
 // 10 Bad number of input arguments
 // 20 Unable to open input
 // 30 Unable to read input
-// 40 Unable to marshal cluster request
+// 40 Unable to marshal bounds_result request
 func main() {
 	dev := flag.Bool("dev", false, "Development flag, interpret input as image file")
 	jobType := flag.Bool("jt", false, "Output job type JSON to stdout")
@@ -196,14 +194,14 @@ func main() {
 			br.Bounds = featureType + "((" + newJsonPairs + "))"
 		}
 		ended := time.Now().UTC()
-		outName := fmt.Sprintf("%s/bounds_result.json", outdir)
+		outName := path.Join(outdir, "bounds_result_", uuid.NewV4().String(), ".json")
 		scale.WriteJsonFile(outName, br)
 		outData.Name = "bounds_result"
 		outData.File = &scale.OutputFile{Path: outName, GeoMetadata: &scale.GeoMetadata{Started: started.Format(bucket.ISO8601FORMAT), Ended: ended.Format(bucket.ISO8601FORMAT)}}
 
 		outData.Name = "bounds_result"
 		manifest := scale.FormatManifest([]*scale.OutputData{outData}, nil)
-		scale.WriteJsonFile(fmt.Sprintf("%s/results_manifest.json", outdir), manifest)
+		scale.WriteJsonFile(path.Join(outdir, "results_manifest.json"), manifest)
 		log.Println("Wrote", manifest.OutputData)
 		os.Exit(0)
 	} else {
@@ -214,13 +212,13 @@ func main() {
 				log.Println(err)
 				os.Exit(10)
 			}
-			bounds, prj, geotype, err1 := geoindex.DetectType(f)
+			resp, err1 := geoindex.DetectType(f)
 			f.Close()
 			if err1 != nil {
 				log.Println(err1)
 				os.Exit(20)
 			}
-			log.Println(bounds, prj, geotype)
+			log.Println(resp.Bounds, resp.Prj, resp.Typ, resp.LastModified)
 		}
 		os.Exit(0)
 	}
