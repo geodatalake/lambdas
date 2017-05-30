@@ -216,13 +216,21 @@ type CreateJob struct {
 	Trigger              *TriggerRule      `json:"trigger_rule,omitempty"`
 }
 
-type BoundsResult struct {
-	Bounds       string `json:"bounds,omitempty"`
-	Prj          string `json:"prj,omitempty"`
+type AuxResultFile struct {
 	Bucket       string `json:"bucket"`
 	Key          string `json:"key"`
 	Region       string `json:"region"`
 	LastModified string `json:"lastModified"`
-	Extension    string `json:"extension,omitempty"`
-	Type         string `json:"type,omitempty"`
+}
+
+type BoundsResult struct {
+	Bounds       string           `json:"bounds,omitempty"`
+	Prj          string           `json:"prj,omitempty"`
+	Bucket       string           `json:"bucket"`
+	Key          string           `json:"key"`
+	Region       string           `json:"region"`
+	LastModified string           `json:"lastModified"`
+	Extension    string           `json:"extension,omitempty"`
+	Type         string           `json:"type,omitempty"`
+	AuxFiles     []*AuxResultFile `json:"aux"`
 }
