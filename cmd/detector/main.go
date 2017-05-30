@@ -18,6 +18,7 @@ import (
 	"github.com/geodatalake/lambdas/elastichelper"
 	"github.com/geodatalake/lambdas/geoindex"
 	"github.com/geodatalake/lambdas/scale"
+	"github.com/satori/go.uuid"
 )
 
 func doc() *elastichelper.Document {
@@ -170,6 +171,12 @@ func main() {
 			log.Println("Processing", cr.File.File)
 			bf := file.AsBucketFile()
 			data := &scale.BoundsResult{Bucket: bf.Bucket, Key: bf.Key, Region: bf.Region, LastModified: bf.LastModified}
+			if len(cr.File.Aux) > 0 {
+				data.AuxFiles = make([]*scale.AuxResultFile, 0, len(cr.File.Aux))
+				for _, f := range cr.File.Aux {
+					data.AuxFiles = append(data.AuxFiles, &scale.AuxResultFile{Bucket: f.Bucket, Key: f.Key, Region: f.Region, LastModified: f.LastModified})
+				}
+			}
 			if ext := path.Ext(file.Key); ext != "" {
 				data.Extension = ext
 			}
@@ -179,16 +186,19 @@ func main() {
 				os.Exit(15)
 			}
 			stream := bf.Stream(sess)
-			bounds, prj, typ, err := geoindex.DetectType(stream)
+			resp, err := geoindex.DetectType(stream)
 			if err != nil {
 				log.Println("Not a geo")
 			} else {
-				data.Bounds = bounds
-				data.Prj = prj
-				data.Type = typ
+				data.Bounds = resp.Bounds
+				data.Prj = resp.Prj
+				data.Type = resp.Typ
+				if resp.LastModified != "" {
+					data.LastModified = resp.LastModified
+				}
 			}
 			ended := time.Now().UTC()
-			outName := path.Join(outdir, "bounds_result.json")
+			outName := path.Join(outdir, "bounds_result_", uuid.NewV4().String(), ".json")
 			scale.WriteJsonFile(outName, data)
 			outData.Name = "bounds_result"
 			outData.File = &scale.OutputFile{Path: outName, GeoMetadata: &scale.GeoMetadata{Started: started.Format(bucket.ISO8601FORMAT), Ended: ended.Format(bucket.ISO8601FORMAT)}}
@@ -209,13 +219,13 @@ func main() {
 				log.Println(err)
 				os.Exit(10)
 			}
-			bounds, prj, typ, err1 := geoindex.DetectType(f)
+			resp, err1 := geoindex.DetectType(f)
 			f.Close()
 			if err1 != nil {
 				log.Println(err1)
 				os.Exit(20)
 			}
-			log.Println(bounds, prj, typ)
+			log.Println(resp.Bounds, resp.Prj, resp.Typ, resp.LastModified)
 		}
 		os.Exit(0)
 	}
