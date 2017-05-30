@@ -5,6 +5,7 @@ machine:
     PATH: "/usr/local/go/bin:/usr/local/go_workspace/bin:~/.go_workspace/bin:${PATH}"
     GOPATH: "${HOME}/.go_workspace:/usr/local/go_workspace:${HOME}/.go_project"
     IMPORT_PATH: "github.com/geodatalake/lambdas"
+    IMPORT_PATH_GEOM: "github.com/geodatalake/geom"
 
   services:
     - docker
@@ -20,7 +21,6 @@ dependencies:
     - go get -u github.com/aws/aws-sdk-go/aws/session
     - go get -u github.com/aws/aws-sdk-go/service/s3
     - go get -u github.com/satori/go.uuid
-    - go get -u github.com/ctessum/geom
     - go get -u github.com/smartystreets/go-aws-auth
   override:
     - rm -rf ${HOME}/.go_workspace/src/github.com/geodatalake/

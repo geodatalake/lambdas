@@ -21,7 +21,7 @@ import (
 	"github.com/geodatalake/lambdas/scale"
 	"strings"
 	"github.com/geodatalake/lambdas/proj4support"
-	"github.com/ctessum/geom"
+	"github.com/geodatalake/geom"
 )
 
 func WriteStderr(s string) {
