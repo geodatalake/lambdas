@@ -31,7 +31,7 @@ func produceJobTypeBucket() []byte {
 	data := doc().
 		AddKV("name", "open-bucket").
 		AddKV("version", "1.0.0").
-		AddKV("title", "Open Bucket Geo").
+		AddKV("title", "Open Bucket").
 		AddKV("description", "Opens a S3 Bucket by directory").
 		AddKV("category", "testing").
 		AddKV("author_name", "Steve_Ingram").
@@ -39,7 +39,7 @@ func produceJobTypeBucket() []byte {
 		AddKV("is_operational", true).
 		AddKV("icon_code", "f09e").
 		AddKV("docker_privileged", false).
-		AddKV("docker_image", "openwhere/scale-detector:dev").
+		AddKV("docker_image", "openwhere/scale-extract-bucket:dev").
 		AddKV("priority", 230).
 		AddKV("max_tries", 3).
 		AddKV("cpus_required", 1.0).
@@ -48,7 +48,7 @@ func produceJobTypeBucket() []byte {
 		AddKV("disk_out_mult_required", 0.0).
 		Append("interface", doc().
 			AddKV("version", "1.1").
-			AddKV("command", "/opt/detect/detector").
+			AddKV("command", "/opt/bucket/extractbucket").
 			AddKV("command_arguments", "${open_bucket} ${job_output_dir}").
 			AddKV("shared_resources", []map[string]interface{}{}).
 			AppendArray("output_data", array().
