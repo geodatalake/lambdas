@@ -5,7 +5,6 @@ machine:
     PATH: "/usr/local/go/bin:/usr/local/go_workspace/bin:~/.go_workspace/bin:${PATH}"
     GOPATH: "${HOME}/.go_workspace:/usr/local/go_workspace:${HOME}/.go_project"
     IMPORT_PATH: "github.com/geodatalake/lambdas"
-    IMPORT_PATH_GEOM: "github.com/geodatalake/geom"
 
   services:
     - docker
