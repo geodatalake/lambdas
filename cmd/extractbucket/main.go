@@ -10,7 +10,6 @@ import (
 	"path"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/dustin/go-humanize"
 	"github.com/geodatalake/lambdas/bucket"
@@ -32,7 +31,7 @@ func produceJobTypeBucket() []byte {
 	data := doc().
 		AddKV("name", "open-bucket").
 		AddKV("version", "1.0.0").
-		AddKV("title", "Open Bucket Geo").
+		AddKV("title", "Open Bucket").
 		AddKV("description", "Opens a S3 Bucket by directory").
 		AddKV("category", "testing").
 		AddKV("author_name", "Steve_Ingram").
@@ -40,7 +39,7 @@ func produceJobTypeBucket() []byte {
 		AddKV("is_operational", true).
 		AddKV("icon_code", "f09e").
 		AddKV("docker_privileged", false).
-		AddKV("docker_image", "openwhere/scale-detector:dev").
+		AddKV("docker_image", "openwhere/scale-extract-bucket:dev").
 		AddKV("priority", 230).
 		AddKV("max_tries", 3).
 		AddKV("cpus_required", 1.0).
@@ -49,7 +48,7 @@ func produceJobTypeBucket() []byte {
 		AddKV("disk_out_mult_required", 0.0).
 		Append("interface", doc().
 			AddKV("version", "1.1").
-			AddKV("command", "/opt/detect/detector").
+			AddKV("command", "/opt/bucket/extractbucket").
 			AddKV("command_arguments", "${open_bucket} ${job_output_dir}").
 			AddKV("shared_resources", []map[string]interface{}{}).
 			AppendArray("output_data", array().
@@ -69,12 +68,15 @@ func produceJobTypeBucket() []byte {
 		Append("error_mapping", doc().
 			AddKV("version", "1.0").
 			Append("exit_codes", doc().
+				AddKV("15", "bad_session").
 				AddKV("10", "bad_num_input").
 				AddKV("20", "open_input").
 				AddKV("30", "read_input").
 				AddKV("40", "marshal_failure").
 				AddKV("50", "bad_s3_read").
-				AddKV("70", "bad_cluster_request")))
+				AddKV("70", "bad_cluster_request").
+				AddKV("80", "unable_write_output")))
+
 	b, err := json.MarshalIndent(data.Build(), "", "  ")
 	if err != nil {
 		scale.WriteStderr(fmt.Sprintf("Error writing job type json: %v", err))
@@ -85,12 +87,14 @@ func produceJobTypeBucket() []byte {
 
 func createErrors(url, token string) {
 	existing := scale.GatherExistingErrors(url, token)
+	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_session", "Bad AWS Session", "AWS Session failed to be created", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_num_input", "Bad input cardinality", "Bad number of input arguments", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("open_input", "Failed to Open input", "Unable to open input", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("read_input", "Failed to Read input", "Unable to read input", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("marshal_failure", "Marshal JSON Failure", "Unable to marshal cluster request", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_s3_read", "Failed S3 Bucket read", "Unable to read S3 bucket", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_cluster_request", "Invalid Cluster Request", "Unknown cluster request", existing))
+	scale.CreateScaleError(url, token, scale.ErrorDoc("unable_write_output", "Unable to write to output", "Unable to write to output", existing))
 }
 
 func registerJobTypes(url, token string) {
@@ -101,11 +105,13 @@ func registerJobTypes(url, token string) {
 
 //  Errors:
 // 10 Bad number of input arguments
+// 15 Bad session
 // 20 Unable to open input
 // 30 Unable to read input
 // 40 Unable to marshal cluster request
 // 50 Unable to read S3 bucket
 // 70 Unknown cluster request
+// 80 Unable to write to output
 func main() {
 	dev := flag.Bool("dev", false, "Development flag, interpret input as image file")
 	jobType := flag.Bool("jt", false, "Output job type JSON to stdout")
@@ -160,10 +166,13 @@ func main() {
 			scale.WriteStderr(errJson.Error())
 			os.Exit(40)
 		}
-		outData := new(scale.OutputData)
 		switch cr.RequestType {
 		case geoindex.ScanBucket:
-			sess := session.Must(session.NewSession())
+			sess, err := scale.GetAwsSession()
+			if err != nil {
+				scale.WriteStderr(err.Error())
+				os.Exit(15)
+			}
 			svc := s3.New(sess, &aws.Config{Region: aws.String(cr.Bucket.Region)})
 			root, err2 := bucket.ListBucketStructure(cr.Bucket.Region, cr.Bucket.Bucket, svc)
 			if err2 != nil {
@@ -194,15 +203,12 @@ func main() {
 				}
 			}
 			log.Println("Processed", humanize.Comma(int64(count)), "items, size:", humanize.Bytes(uint64(size)))
-			outData.Name = "dir_request"
-			outData.Files = allExtracts
+			manifest := scale.FormatManifestFiles("dir_request", allExtracts, nil)
+			scale.WriteJsonFile(path.Join(outdir, "results_manifest.json"), manifest)
 		default:
 			scale.WriteStderr(fmt.Sprintf("Unknown request type %d", cr.RequestType))
 			os.Exit(70)
 		}
-		manifest := scale.FormatManifest([]*scale.OutputData{outData}, nil)
-		scale.WriteJsonFile(path.Join(outdir, "results_manifest.json"), manifest)
-		log.Println("Wrote", manifest.OutputData)
 		os.Exit(0)
 	} else {
 		// TODO: Fill in dev

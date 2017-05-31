@@ -17,39 +17,56 @@ import (
 	"github.com/geodatalake/lambdas/vector"
 )
 
-func handleRaster(r interface{}) (string, string, string, error) {
+type HandleReturn struct {
+	Bounds       string
+	Prj          string
+	Typ          string
+	LastModified string
+}
+
+func handleRaster(r interface{}) (*HandleReturn, error) {
 	switch rtype := r.(type) {
 	case geotiff.Tiff:
 		if rtype.IsGeotiff() {
 			if value, err := rtype.GetGeoKeyValue(geotiff.GeoKeyProjectedCSTypeGeoKey); err != nil {
-				return "", "", "", err
+				return nil, err
 			} else if bounds, err1 := rtype.Bounds(); err1 != nil {
-				return "", "", "", err1
+				return nil, err1
 			} else {
-				return bounds.AsWkt(), value.(string), "geotiff", nil
+				lastModified := ""
+				tm, err := rtype.DateTime()
+				if err == nil {
+					lastModified = tm.UTC().Format(bucket.ISO8601FORMAT)
+				}
+				return &HandleReturn{Bounds: bounds.AsWkt(), Prj: value.(string), Typ: "geotiff", LastModified: lastModified}, nil
 			}
 		}
 	case lidar.Las:
 		bounds := rtype.Bounds()
 		log.Println("Found bounds", bounds)
+		tm, err := rtype.DateTime()
+		lastModified := ""
+		if err == nil {
+			lastModified = tm.UTC().Format(bucket.ISO8601FORMAT)
+		}
 		if rtype.IsWktCrs() {
 			log.Println("WKT CRS")
-			return bounds.AsWkt(), rtype.WktCrs().Wkt, "lidar", nil
+			return &HandleReturn{Bounds: bounds.AsWkt(), Prj: rtype.WktCrs().Wkt, Typ: "lidar", LastModified: lastModified}, nil
 		} else {
 			log.Println("GeoKeys CRS")
 			prj, ok := rtype.GeotiffCrs().GetProjectedCSType()
 			if !ok {
-				return bounds.AsWkt(), "", "lidar", nil
+				return &HandleReturn{Bounds: bounds.AsWkt(), Prj: "", Typ: "lidar", LastModified: lastModified}, nil
 			} else {
-				return bounds.AsWkt(), prj, "lidar", nil
+				return &HandleReturn{Bounds: bounds.AsWkt(), Prj: prj, Typ: "lidar", LastModified: lastModified}, nil
 			}
 		}
 	}
 	log.Println("Unknown raster interface")
-	return "", "", "", fmt.Errorf("Unknown raster type %v", r)
+	return nil, fmt.Errorf("Unknown raster type %v", r)
 }
 
-func handleVector(v vector.VectorIntfc) (string, string, string, error) {
+func handleVector(v vector.VectorIntfc) (*HandleReturn, error) {
 
 	// bounds.AsWkt()
 	// The 2nd string is Projection
@@ -57,7 +74,7 @@ func handleVector(v vector.VectorIntfc) (string, string, string, error) {
 	vBounds, err := v.Bounds()
 
 	if err != nil {
-		return "", "", "", fmt.Errorf("TODO: Implement vector methods")
+		return nil, fmt.Errorf("TODO: Implement vector methods")
 	}
 
 	var geotype = "kml"
@@ -68,14 +85,13 @@ func handleVector(v vector.VectorIntfc) (string, string, string, error) {
 	projection := "EPSG:4326"
 	boundswkt := vBounds.AsWkt()
 
-	return boundswkt, projection, geotype, nil
-
+	return &HandleReturn{Bounds: boundswkt, Prj: projection, Typ: geotype, LastModified: ""}, nil
 }
 
-func DetectType(stream raster.RasterStream) (string, string, string, error) {
+func DetectType(stream raster.RasterStream) (*HandleReturn, error) {
 	if r, err := raster.IsRaster(stream); err != nil {
 		if v, err1 := vector.IsVector(stream); err1 != nil {
-			return "", "", "", fmt.Errorf("Unknown file type %v", err1)
+			return nil, fmt.Errorf("Unknown file type %v", err1)
 		} else {
 			return handleVector(v)
 		}
@@ -141,6 +157,57 @@ type Extractable interface {
 	GetKeys() []*bucket.BucketFile
 }
 
+func (ef *ExtractFile) IsShapeFile() bool {
+	if ef.File.IsShapeFileRoot() {
+		return true
+	}
+	for _, f := range ef.Aux {
+		if f.IsShapeFileRoot() {
+			return true
+		}
+	}
+	return false
+}
+
+func (ef *ExtractFile) EjectNonShapeFile() ([]*ExtractFile, bool) {
+	if ef.IsShapeFile() {
+		// So we have a .shp somewhere in File or Aux
+		// Eject non shapefile extensions, put .shp in File
+		retval := make([]*ExtractFile, 0, 32)
+		if !ef.File.IsShapeFileRoot() {
+			// root files are either .shp or
+			// other extension not part of shape files
+			// If not .shp, eject it and replace with .shp
+			eject := new(ExtractFile)
+			eject.File = ef.File
+			retval = append(retval, eject)
+			for _, f := range ef.Aux {
+				if f.IsShapeFileRoot() {
+					ef.File = f
+				}
+			}
+		}
+		// Now eject any non shape file extensions
+		// This will include remocing the shape file root (.shp) (if present)
+		updatedAux := make([]*BucketFileInfo, 0, 32)
+		for _, f := range ef.Aux {
+			if !f.IsShapeFileAux() {
+				if !f.IsShapeFileRoot() {
+					eject := new(ExtractFile)
+					eject.File = f
+					retval = append(retval, eject)
+				}
+			} else {
+				updatedAux = append(updatedAux, f)
+			}
+		}
+		ef.Aux = make([]*BucketFileInfo, len(updatedAux))
+		copy(ef.Aux, updatedAux)
+		return retval, len(retval) > 0
+	}
+	return nil, false
+}
+
 func Extract(di Extractable) ([]*ExtractFile, bool) {
 	dirFiles := make(map[string]*bucket.BucketFile)
 	baseNames := NewStringBucketSet()
@@ -178,6 +245,13 @@ func Extract(di Extractable) ([]*ExtractFile, bool) {
 				ef.Aux = nil
 			}
 		}
+		// Ejects files that are not part of a shapefile array
+		// If the ef does not contain a .shp, then nothing is done
+		if files, ok := ef.EjectNonShapeFile(); ok {
+			// Add the ejected files as individuals
+			retval = append(retval, files...)
+		}
+		// Now add the ef (potentially altered to have the .shp in root File)
 		retval = append(retval, ef)
 	}
 

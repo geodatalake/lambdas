@@ -1,6 +1,7 @@
 package scale
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 )
@@ -25,5 +26,14 @@ func TestWorkspace(t *testing.T) {
 		if *w.Broker != *w2.Broker {
 			t.Errorf("Expected %+v, received %+v", *w, *w2)
 		}
+	}
+}
+
+func TestManifestMarshal(t *testing.T) {
+	output := &OutputFile{Path: "bar"}
+	manifest := FormatManifestFile("foo", []*OutputFile{output}, nil)
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(manifest); err != nil {
+		t.Error(err)
 	}
 }

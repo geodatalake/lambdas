@@ -18,15 +18,15 @@ func WriteStderr(s string) {
 
 func WriteJson(writer io.Writer, objectToWrite interface{}) {
 	if jErr := json.NewEncoder(writer).Encode(objectToWrite); jErr != nil {
-		WriteStderr(fmt.Sprintf("Error printing JSON: %v", jErr))
-		os.Exit(30)
+		WriteStderr(fmt.Sprintf("Error printing JSON: %v\n", jErr))
+		os.Exit(80)
 	}
 }
 
 func WriteJsonFile(filename string, objectToWrite interface{}) {
 	if f, err := os.Create(filename); err != nil {
 		WriteStderr(fmt.Sprintf("Error creating output file %s: %v", filename, err))
-		os.Exit(20)
+		os.Exit(80)
 	} else {
 		defer f.Close()
 		WriteJson(f, objectToWrite)

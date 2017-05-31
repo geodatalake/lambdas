@@ -29,6 +29,53 @@ func (bfi *BucketFileInfo) AsBucketFile() *bucket.BucketFile {
 	return bucket.NewBucketFile(bfi.Region, bfi.Bucket, bfi.Key, bfi.LastModified, bfi.Size)
 }
 
+func (bfi *BucketFileInfo) IsShapeFileRoot() bool {
+	if _, ext, ok := getExtension(bfi.Key); ok {
+		if ext == "shp" {
+			return true
+		}
+	}
+	return false
+}
+
+// As of ArcGis 9.2 (.shp, .shx, .dbf are required)
+// The rest are optional
+func (bfi *BucketFileInfo) IsShapeFileAux() bool {
+	if _, ext, ok := getExtension(bfi.Key); ok {
+		switch ext {
+		case "dbf":
+			return true
+		case "shx":
+			return true
+		case "prj":
+			return true
+		case "xml":
+			return true
+		case "sbn":
+			return true
+		case "sbx":
+			return true
+		case "fbn":
+			return true
+		case "fbx":
+			return true
+		case "ain":
+			return true
+		case "aih":
+			return true
+		case "atx":
+			return true
+		case "ixs":
+			return true
+		case "mxs":
+			return true
+		case "cpg":
+			return true
+		}
+	}
+	return false
+}
+
 type ExtractFile struct {
 	File *BucketFileInfo   `json:"file"`
 	Aux  []*BucketFileInfo `json:"aux,omitempty"`
