@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"path"
 
@@ -157,7 +156,6 @@ func main() {
 			scale.WriteStderr(errJson.Error())
 			os.Exit(40)
 		}
-		outData := new(scale.OutputData)
 		allExtracts := make([]*scale.OutputFile, 0, 128)
 		switch cr.RequestType {
 		case geoindex.GroupFiles:
@@ -183,16 +181,13 @@ func main() {
 					}
 					allExtracts = append(allExtracts, myOutputFile)
 				}
-				outData.Name = "extract_instructions"
-				outData.Files = allExtracts
 			}
 		default:
 			scale.WriteStderr(fmt.Sprintf("Unknown request type %d", cr.RequestType))
 			os.Exit(70)
 		}
-		manifest := scale.FormatManifest([]*scale.OutputData{outData}, nil)
+		manifest := scale.FormatManifest("extract_instructions", allExtracts, nil)
 		scale.WriteJsonFile(path.Join(outdir, "results_manifest.json"), manifest)
-		log.Println("Wrote", manifest.OutputData)
 		os.Exit(0)
 	}
 }

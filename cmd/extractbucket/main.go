@@ -162,7 +162,6 @@ func main() {
 			scale.WriteStderr(errJson.Error())
 			os.Exit(40)
 		}
-		outData := new(scale.OutputData)
 		switch cr.RequestType {
 		case geoindex.ScanBucket:
 			sess, err := scale.GetAwsSession()
@@ -200,15 +199,12 @@ func main() {
 				}
 			}
 			log.Println("Processed", humanize.Comma(int64(count)), "items, size:", humanize.Bytes(uint64(size)))
-			outData.Name = "dir_request"
-			outData.Files = allExtracts
+			manifest := scale.FormatManifest("dir_request", allExtracts, nil)
+			scale.WriteJsonFile(path.Join(outdir, "results_manifest.json"), manifest)
 		default:
 			scale.WriteStderr(fmt.Sprintf("Unknown request type %d", cr.RequestType))
 			os.Exit(70)
 		}
-		manifest := scale.FormatManifest([]*scale.OutputData{outData}, nil)
-		scale.WriteJsonFile(path.Join(outdir, "results_manifest.json"), manifest)
-		log.Println("Wrote", manifest.OutputData)
 		os.Exit(0)
 	} else {
 		// TODO: Fill in dev

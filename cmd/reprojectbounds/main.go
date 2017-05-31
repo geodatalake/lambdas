@@ -77,7 +77,8 @@ func produceJobType() []byte {
 				AddKV("10", "bad_num_input").
 				AddKV("20", "open_input").
 				AddKV("30", "read_input").
-				AddKV("40", "marshal_failure")))
+				AddKV("40", "marshal_failure").
+				AddKV("80", "unable_write_output")))
 	b, err := json.MarshalIndent(data.Build(), "", "  ")
 	if err != nil {
 		scale.WriteStderr(fmt.Sprintf("Error writing job type json: %v", err))
@@ -92,6 +93,7 @@ func createErrors(url, token string) {
 	scale.CreateScaleError(url, token, scale.ErrorDoc("open_input", "Failed to Open input", "Unable to open input", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("read_input", "Failed to Read input", "Unable to read input", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("marshal_failure", "Marshal JSON Failure", "Unable to marshal cluster request", existing))
+	scale.CreateScaleError(url, token, scale.ErrorDoc("unable_write_output", "Unable to write to output", "Unable to write to output", existing))
 }
 
 //  Errors:
@@ -99,6 +101,7 @@ func createErrors(url, token string) {
 // 20 Unable to open input
 // 30 Unable to read input
 // 40 Unable to marshal bounds_result request
+// 80 Unable to write to output
 func main() {
 	dev := flag.Bool("dev", false, "Development flag, interpret input as image file")
 	jobType := flag.Bool("jt", false, "Output job type JSON to stdout")
@@ -154,7 +157,6 @@ func main() {
 			scale.WriteStderr(errJson.Error())
 			os.Exit(40)
 		}
-		outData := new(scale.OutputData)
 		if len(br.Bounds) > 0 && len(br.Prj) > 0 {
 			fmt.Println(br.Prj)
 			var oldPrj = strings.TrimPrefix(br.Prj, "EPSG")
@@ -194,15 +196,15 @@ func main() {
 			br.Bounds = featureType + "((" + newJsonPairs + "))"
 		}
 		ended := time.Now().UTC()
-		outName := path.Join(outdir, "bounds_result_", uuid.NewV4().String(), ".json")
+		outName := path.Join(outdir, fmt.Sprintf("bounds_result_%s.json", uuid.NewV4().String()))
 		scale.WriteJsonFile(outName, br)
-		outData.Name = "bounds_result"
-		outData.File = &scale.OutputFile{Path: outName, GeoMetadata: &scale.GeoMetadata{Started: started.Format(bucket.ISO8601FORMAT), Ended: ended.Format(bucket.ISO8601FORMAT)}}
-
-		outData.Name = "bounds_result"
-		manifest := scale.FormatManifest([]*scale.OutputData{outData}, nil)
+		of := new(scale.OutputFile)
+		of.Path = outName
+		of.GeoMetadata = &scale.GeoMetadata{
+			Started: started.Format(bucket.ISO8601FORMAT),
+			Ended:   ended.Format(bucket.ISO8601FORMAT)}
+		manifest := scale.FormatManifest("bounds_result", []*scale.OutputFile{of}, nil)
 		scale.WriteJsonFile(path.Join(outdir, "results_manifest.json"), manifest)
-		log.Println("Wrote", manifest.OutputData)
 		os.Exit(0)
 	} else {
 		args := flag.Args()
