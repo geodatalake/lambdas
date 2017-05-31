@@ -23,29 +23,41 @@ func (of *OutputFile) format() *elastichelper.Document {
 	}
 }
 
-func FormatManifest(name string, files []*OutputFile, parsed []*ParseResult) map[string]interface{} {
+// Format as a single File manifest regardless of the cardinality of the array
+func FormatManifestFile(name string, files []*OutputFile, parsed []*ParseResult) map[string]interface{} {
 	retval := doc().
 		AddKV("version", "1.1")
 
-	switch len(files) {
-	case 1:
-		retval.
-			AppendArray("output_data", array().
-				Add(doc().
-					AddKV("name", name).
-					Append("file", files[0].format())))
-	default:
-		myFiles := array()
-		for _, of := range files {
-			myFiles.Add(of.format())
+	retval.
+		AppendArray("output_data", array().
+			Add(doc().
+				AddKV("name", name).
+				Append("file", files[0].format())))
+	if parsed != nil && len(parsed) > 0 {
+		results := array()
+		for _, pr := range parsed {
+			results.Add(pr.format())
 		}
-
-		retval.
-			AppendArray("output_data", array().
-				Add(doc().
-					AddKV("name", name).
-					AppendArray("files", myFiles)))
+		retval.AppendArray("parse_results", results)
 	}
+	return retval.Build()
+}
+
+// Format as a Files manifest regardless of the cardinality of the array
+func FormatManifestFiles(name string, files []*OutputFile, parsed []*ParseResult) map[string]interface{} {
+	retval := doc().
+		AddKV("version", "1.1")
+
+	myFiles := array()
+	for _, of := range files {
+		myFiles.Add(of.format())
+	}
+
+	retval.
+		AppendArray("output_data", array().
+			Add(doc().
+				AddKV("name", name).
+				AppendArray("files", myFiles)))
 	if parsed != nil && len(parsed) > 0 {
 		results := array()
 		for _, pr := range parsed {

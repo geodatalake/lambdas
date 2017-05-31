@@ -189,7 +189,7 @@ func main() {
 			scale.WriteStderr(fmt.Sprintf("Unknown request type %d", cr.RequestType))
 			os.Exit(70)
 		}
-		manifest := scale.FormatManifest("extract_instructions", allExtracts, nil)
+		manifest := scale.FormatManifestFiles("extract_instructions", allExtracts, nil)
 		scale.WriteJsonFile(path.Join(outdir, "results_manifest.json"), manifest)
 		os.Exit(0)
 	}

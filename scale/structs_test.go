@@ -31,7 +31,7 @@ func TestWorkspace(t *testing.T) {
 
 func TestManifestMarshal(t *testing.T) {
 	output := &OutputFile{Path: "bar"}
-	manifest := FormatManifest("foo", []*OutputFile{output}, nil)
+	manifest := FormatManifestFile("foo", []*OutputFile{output}, nil)
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(manifest); err != nil {
 		t.Error(err)

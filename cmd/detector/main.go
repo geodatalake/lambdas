@@ -207,7 +207,7 @@ func main() {
 			of.GeoMetadata = &scale.GeoMetadata{
 				Started: started.Format(bucket.ISO8601FORMAT),
 				Ended:   ended.Format(bucket.ISO8601FORMAT)}
-			manifest := scale.FormatManifest("bounds_result", []*scale.OutputFile{of}, nil)
+			manifest := scale.FormatManifestFile("bounds_result", []*scale.OutputFile{of}, nil)
 			scale.WriteJsonFile(path.Join(outdir, "results_manifest.json"), manifest)
 		default:
 			scale.WriteStderr(fmt.Sprintf("Unknown request type %d", cr.RequestType))

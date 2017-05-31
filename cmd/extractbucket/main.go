@@ -203,7 +203,7 @@ func main() {
 				}
 			}
 			log.Println("Processed", humanize.Comma(int64(count)), "items, size:", humanize.Bytes(uint64(size)))
-			manifest := scale.FormatManifest("dir_request", allExtracts, nil)
+			manifest := scale.FormatManifestFiles("dir_request", allExtracts, nil)
 			scale.WriteJsonFile(path.Join(outdir, "results_manifest.json"), manifest)
 		default:
 			scale.WriteStderr(fmt.Sprintf("Unknown request type %d", cr.RequestType))
