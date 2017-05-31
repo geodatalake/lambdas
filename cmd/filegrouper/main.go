@@ -173,14 +173,17 @@ func main() {
 					} else {
 						writer = f
 					}
-					scale.WriteJson(writer, ef)
+					clusterrquest := new(geoindex.ClusterRequest)
+					clusterrquest.RequestType = geoindex.ExtractFileType
+					clusterrquest.File = ef
+					scale.WriteJson(writer, clusterrquest)
 					writer.Close()
 					myOutputFile := &scale.OutputFile{
 						Path: outName,
 					}
 					allExtracts = append(allExtracts, myOutputFile)
 				}
-				outData.Name = "dir_request"
+				outData.Name = "extract_instructions"
 				outData.Files = allExtracts
 			}
 		default:
