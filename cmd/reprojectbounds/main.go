@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ctessum/geom"
+	"github.com/geodatalake/geom"
 	"github.com/geodatalake/lambdas/bucket"
 	"github.com/geodatalake/lambdas/elastichelper"
 	"github.com/geodatalake/lambdas/geoindex"

@@ -20,14 +20,16 @@ dependencies:
     - go get -u github.com/aws/aws-sdk-go/aws/session
     - go get -u github.com/aws/aws-sdk-go/service/s3
     - go get -u github.com/satori/go.uuid
-    - go get -u github.com/ctessum/geom
     - go get -u github.com/smartystreets/go-aws-auth
+
+
   override:
     - rm -rf ${HOME}/.go_workspace/src/github.com/geodatalake/
     - mkdir -p ~/.go_workspace/src/github.com/geodatalake
     - ln -s ${HOME}/${CIRCLE_PROJECT_REPONAME} ${HOME}/.go_workspace/src/github.com/geodatalake/
 
   post:
+    - go get -u github.com/geodatalake/geom
     - go build $IMPORT_PATH/geotiff
     - go build $IMPORT_PATH/lidar
     - go build $IMPORT_PATH/bucket
