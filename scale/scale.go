@@ -12,21 +12,48 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials/ec2rolecreds"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/geodatalake/lambdas/elastichelper"
 )
 
-func FormatManifest(output []*OutputData, parsed []*ParseResult) *ResultsManifest {
-	if parsed != nil {
-		return &ResultsManifest{
-			Version:      "1.1",
-			OutputData:   output,
-			ParseResults: parsed,
-		}
+func (of *OutputFile) format() *elastichelper.Document {
+	if of.GeoMetadata != nil {
+		return doc().AddKV("path", of.Path).Append("geo_metadata", of.GeoMetadata.format())
 	} else {
-		return &ResultsManifest{
-			Version:    "1.1",
-			OutputData: output,
-		}
+		return doc().AddKV("path", of.Path)
 	}
+}
+
+func FormatManifest(name string, files []*OutputFile, parsed []*ParseResult) map[string]interface{} {
+	retval := doc().
+		AddKV("version", "1.1")
+
+	switch len(files) {
+	case 1:
+		retval.
+			AppendArray("output_data", array().
+				Add(doc().
+					AddKV("name", name).
+					Append("file", files[0].format())))
+	default:
+		myFiles := array()
+		for _, of := range files {
+			myFiles.Add(of.format())
+		}
+
+		retval.
+			AppendArray("output_data", array().
+				Add(doc().
+					AddKV("name", name).
+					AppendArray("files", myFiles)))
+	}
+	if parsed != nil && len(parsed) > 0 {
+		results := array()
+		for _, pr := range parsed {
+			results.Add(pr.format())
+		}
+		retval.AppendArray("parse_results", results)
+	}
+	return retval.Build()
 }
 
 func RegisterJobType(url, token string, data []byte) {
