@@ -69,7 +69,9 @@ func produceJobType() []byte {
 				AddKV("30", "read_input").
 				AddKV("40", "marshal_failure").
 				AddKV("50", "bad_s3_read").
-				AddKV("70", "bad_cluster_request")))
+				AddKV("70", "bad_cluster_request").
+				AddKV("80", "unable_write_output")))
+
 	b, err := json.MarshalIndent(data.Build(), "", "  ")
 	if err != nil {
 		scale.WriteStderr(fmt.Sprintf("Error writing job type json: %v", err))
@@ -86,6 +88,7 @@ func createErrors(url, token string) {
 	scale.CreateScaleError(url, token, scale.ErrorDoc("marshal_failure", "Marshal JSON Failure", "Unable to marshal cluster request", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_s3_read", "Failed S3 Bucket read", "Unable to read S3 bucket", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_cluster_request", "Invalid Cluster Request", "Unknown cluster request", existing))
+	scale.CreateScaleError(url, token, scale.ErrorDoc("unable_write_output", "Unable to write to output", "Unable to write to output", existing))
 }
 
 func registerJobTypes(url, token string) {
@@ -101,7 +104,7 @@ func registerJobTypes(url, token string) {
 // 40 Unable to marshal cluster request
 // 50 Unable to read S3 bucket
 // 70 Unknown cluster request
-
+// 80 Unable to write to output
 func main() {
 	dev := flag.Bool("dev", false, "Development flag, interpret input as image file")
 	jobType := flag.Bool("jt", false, "Output job type JSON to stdout")
