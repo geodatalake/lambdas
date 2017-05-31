@@ -14,12 +14,11 @@ import (
 	"path"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws/session"
-
 	"github.com/geodatalake/lambdas/bucket"
 	"github.com/geodatalake/lambdas/elastichelper"
 	"github.com/geodatalake/lambdas/geoindex"
 	"github.com/geodatalake/lambdas/scale"
+	"github.com/satori/go.uuid"
 )
 
 func doc() *elastichelper.Document {
@@ -76,7 +75,8 @@ func produceJobTypeExtract() []byte {
 				AddKV("30", "read_input").
 				AddKV("40", "marshal_failure").
 				AddKV("50", "bad_s3_read").
-				AddKV("70", "bad_cluster_request")))
+				AddKV("70", "bad_cluster_request").
+				AddKV("80", "unable_write_output")))
 	b, err := json.MarshalIndent(data.Build(), "", "  ")
 	if err != nil {
 		scale.WriteStderr(fmt.Sprintf("Error writing job type json: %v", err))
@@ -87,12 +87,14 @@ func produceJobTypeExtract() []byte {
 
 func createErrors(url, token string) {
 	existing := scale.GatherExistingErrors(url, token)
+	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_session", "Bad AWS Session", "AWS Session failed to be created", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_num_input", "Bad input cardinality", "Bad number of input arguments", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("open_input", "Failed to Open input", "Unable to open input", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("read_input", "Failed to Read input", "Unable to read input", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("marshal_failure", "Marshal JSON Failure", "Unable to marshal cluster request", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_s3_read", "Failed S3 Bucket read", "Unable to read S3 bucket", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_cluster_request", "Invalid Cluster Request", "Unknown cluster request", existing))
+	scale.CreateScaleError(url, token, scale.ErrorDoc("unable_write_output", "Unable to write to output", "Unable to write to output", existing))
 }
 
 func registerJobTypes(url, token string) {
@@ -103,11 +105,13 @@ func registerJobTypes(url, token string) {
 
 //  Errors:
 // 10 Bad number of input arguments
+// 15 Bad Aws Session
 // 20 Unable to open input
 // 30 Unable to read input
 // 40 Unable to marshal cluster request
 // 50 Unable to read S3 bucket
 // 70 Unknown cluster request
+// 80 Unable to write to output
 func main() {
 	dev := flag.Bool("dev", false, "Development flag, interpret input as image file")
 	jobType := flag.Bool("jt", false, "Output job type JSON to stdout")
@@ -163,39 +167,52 @@ func main() {
 			scale.WriteStderr(errJson.Error())
 			os.Exit(40)
 		}
-		outData := new(scale.OutputData)
 		switch cr.RequestType {
 		case geoindex.ExtractFileType:
 			file := cr.File.File
 			log.Println("Processing", cr.File.File)
 			bf := file.AsBucketFile()
 			data := &scale.BoundsResult{Bucket: bf.Bucket, Key: bf.Key, Region: bf.Region, LastModified: bf.LastModified}
+			if len(cr.File.Aux) > 0 {
+				data.AuxFiles = make([]*scale.AuxResultFile, 0, len(cr.File.Aux))
+				for _, f := range cr.File.Aux {
+					data.AuxFiles = append(data.AuxFiles, &scale.AuxResultFile{Bucket: f.Bucket, Key: f.Key, Region: f.Region, LastModified: f.LastModified})
+				}
+			}
 			if ext := path.Ext(file.Key); ext != "" {
 				data.Extension = ext
 			}
-			sess := session.Must(session.NewSession())
+			sess, err := scale.GetAwsSession()
+			if err != nil {
+				scale.WriteStderr(err.Error())
+				os.Exit(15)
+			}
 			stream := bf.Stream(sess)
-			bounds, prj, typ, err := geoindex.DetectType(stream)
+			resp, err := geoindex.DetectType(stream)
 			if err != nil {
 				log.Println("Not a geo")
 			} else {
-				data.Bounds = bounds
-				data.Prj = prj
-				data.Type = typ
+				data.Bounds = resp.Bounds
+				data.Prj = resp.Prj
+				data.Type = resp.Typ
+				if resp.LastModified != "" {
+					data.LastModified = resp.LastModified
+				}
 			}
 			ended := time.Now().UTC()
-			outName := path.Join(outdir, "bounds_result.json")
+			outName := path.Join(outdir, fmt.Sprintf("bounds_result_%s.json", uuid.NewV4().String()))
 			scale.WriteJsonFile(outName, data)
-			outData.Name = "bounds_result"
-			outData.File = &scale.OutputFile{Path: outName, GeoMetadata: &scale.GeoMetadata{Started: started.Format(bucket.ISO8601FORMAT), Ended: ended.Format(bucket.ISO8601FORMAT)}}
+			of := new(scale.OutputFile)
+			of.Path = outName
+			of.GeoMetadata = &scale.GeoMetadata{
+				Started: started.Format(bucket.ISO8601FORMAT),
+				Ended:   ended.Format(bucket.ISO8601FORMAT)}
+			manifest := scale.FormatManifestFile("bounds_result", []*scale.OutputFile{of}, nil)
+			scale.WriteJsonFile(path.Join(outdir, "results_manifest.json"), manifest)
 		default:
 			scale.WriteStderr(fmt.Sprintf("Unknown request type %d", cr.RequestType))
 			os.Exit(70)
 		}
-		manifest := scale.FormatManifest([]*scale.OutputData{outData}, nil)
-		outName := path.Join(outdir, "results_manifest.json")
-		scale.WriteJsonFile(outName, manifest)
-		log.Println("Wrote", manifest.OutputData)
 		os.Exit(0)
 	} else {
 		args := flag.Args()
@@ -205,13 +222,13 @@ func main() {
 				log.Println(err)
 				os.Exit(10)
 			}
-			bounds, prj, typ, err1 := geoindex.DetectType(f)
+			resp, err1 := geoindex.DetectType(f)
 			f.Close()
 			if err1 != nil {
 				log.Println(err1)
 				os.Exit(20)
 			}
-			log.Println(bounds, prj, typ)
+			log.Println(resp.Bounds, resp.Prj, resp.Typ, resp.LastModified)
 		}
 		os.Exit(0)
 	}

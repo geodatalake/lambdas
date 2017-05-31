@@ -1,33 +1,32 @@
 package scale
 
 import (
-	"encoding/json"
-	"fmt"
+	"github.com/geodatalake/lambdas/elastichelper"
 )
 
 type GeoMetadata struct {
-	Started string          `json:"data_started"`
-	Ended   string          `json:"data_ended"`
-	GeoJson json.RawMessage `json:"geo_json"`
+	Started string `json:"data_started"`
+	Ended   string `json:"data_ended"`
+	GeoJson string `json:"geo_json"`
+}
+
+func (gm *GeoMetadata) format() *elastichelper.Document {
+	geo := doc()
+	if gm.Started != "" {
+		geo.AddKV("data_started", gm.Started)
+	}
+	if gm.Ended != "" {
+		geo.AddKV("data_ended", gm.Ended)
+	}
+	if gm.GeoJson != "" {
+		geo.AddKV("geo_json", gm.GeoJson)
+	}
+	return geo
 }
 
 type OutputFile struct {
 	Path        string       `json:"path"`
 	GeoMetadata *GeoMetadata `json:"geo_metadata,omitempty"`
-}
-
-type OutputData struct {
-	Name  string        `json:"name"`
-	File  *OutputFile   `json:"file,omitempty"`
-	Files []*OutputFile `json:"files,omitempty"`
-}
-
-func (od *OutputData) String() string {
-	if od.File != nil {
-		return fmt.Sprintf("%s file %s", od.Name, od.File.Path)
-	} else {
-		return fmt.Sprintf("%s files", od.Name)
-	}
 }
 
 type ParseResult struct {
@@ -37,14 +36,21 @@ type ParseResult struct {
 	GeoMetadata      *GeoMetadata `json:"geo_json,omitempty"`
 }
 
-type ResultsManifest struct {
-	Version      string         `json:"version"`
-	OutputData   []*OutputData  `json:"output_data,omitempty"`
-	ParseResults []*ParseResult `json:"parse_results,omitempty"`
-}
-
-func (rm *ResultsManifest) String() string {
-	return fmt.Sprintf("Manifest: Version %s, Output: %s", rm.Version, rm.OutputData)
+func (pr *ParseResult) format() *elastichelper.Document {
+	retval := doc().
+		AddKV("filename", pr.Filename).
+		AddKV("new_workspace_path", pr.NewWorkspacePath)
+	if len(pr.DataTypes) > 0 {
+		datatypes := array()
+		for _, dt := range pr.DataTypes {
+			datatypes.Add(dt)
+		}
+		retval.AppendArray("data_types", datatypes)
+	}
+	if pr.GeoMetadata != nil {
+		retval.Append("geo_metadata", pr.GeoMetadata.format())
+	}
+	return retval
 }
 
 type JobEnvVar struct {
@@ -216,13 +222,21 @@ type CreateJob struct {
 	Trigger              *TriggerRule      `json:"trigger_rule,omitempty"`
 }
 
-type BoundsResult struct {
-	Bounds       string `json:"bounds,omitempty"`
-	Prj          string `json:"prj,omitempty"`
+type AuxResultFile struct {
 	Bucket       string `json:"bucket"`
 	Key          string `json:"key"`
 	Region       string `json:"region"`
 	LastModified string `json:"lastModified"`
-	Extension    string `json:"extension,omitempty"`
-	Type         string `json:"type,omitempty"`
+}
+
+type BoundsResult struct {
+	Bounds       string           `json:"bounds,omitempty"`
+	Prj          string           `json:"prj,omitempty"`
+	Bucket       string           `json:"bucket"`
+	Key          string           `json:"key"`
+	Region       string           `json:"region"`
+	LastModified string           `json:"lastModified"`
+	Extension    string           `json:"extension,omitempty"`
+	Type         string           `json:"type,omitempty"`
+	AuxFiles     []*AuxResultFile `json:"aux"`
 }

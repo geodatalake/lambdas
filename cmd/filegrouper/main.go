@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"path"
 
@@ -36,7 +35,7 @@ func produceJobType() []byte {
 		AddKV("is_operational", true).
 		AddKV("icon_code", "f0b0").
 		AddKV("docker_privileged", false).
-		AddKV("docker_image", "openwhere/scale-grouper:dev").
+		AddKV("docker_image", "openwhere/scale-file-grouper:dev").
 		AddKV("priority", 230).
 		AddKV("max_tries", 3).
 		AddKV("cpus_required", 1.0).
@@ -70,7 +69,9 @@ func produceJobType() []byte {
 				AddKV("30", "read_input").
 				AddKV("40", "marshal_failure").
 				AddKV("50", "bad_s3_read").
-				AddKV("70", "bad_cluster_request")))
+				AddKV("70", "bad_cluster_request").
+				AddKV("80", "unable_write_output")))
+
 	b, err := json.MarshalIndent(data.Build(), "", "  ")
 	if err != nil {
 		scale.WriteStderr(fmt.Sprintf("Error writing job type json: %v", err))
@@ -87,6 +88,7 @@ func createErrors(url, token string) {
 	scale.CreateScaleError(url, token, scale.ErrorDoc("marshal_failure", "Marshal JSON Failure", "Unable to marshal cluster request", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_s3_read", "Failed S3 Bucket read", "Unable to read S3 bucket", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_cluster_request", "Invalid Cluster Request", "Unknown cluster request", existing))
+	scale.CreateScaleError(url, token, scale.ErrorDoc("unable_write_output", "Unable to write to output", "Unable to write to output", existing))
 }
 
 func registerJobTypes(url, token string) {
@@ -102,7 +104,7 @@ func registerJobTypes(url, token string) {
 // 40 Unable to marshal cluster request
 // 50 Unable to read S3 bucket
 // 70 Unknown cluster request
-
+// 80 Unable to write to output
 func main() {
 	dev := flag.Bool("dev", false, "Development flag, interpret input as image file")
 	jobType := flag.Bool("jt", false, "Output job type JSON to stdout")
@@ -157,7 +159,6 @@ func main() {
 			scale.WriteStderr(errJson.Error())
 			os.Exit(40)
 		}
-		outData := new(scale.OutputData)
 		allExtracts := make([]*scale.OutputFile, 0, 128)
 		switch cr.RequestType {
 		case geoindex.GroupFiles:
@@ -173,23 +174,23 @@ func main() {
 					} else {
 						writer = f
 					}
-					scale.WriteJson(writer, ef)
+					clusterrquest := new(geoindex.ClusterRequest)
+					clusterrquest.RequestType = geoindex.ExtractFileType
+					clusterrquest.File = ef
+					scale.WriteJson(writer, clusterrquest)
 					writer.Close()
 					myOutputFile := &scale.OutputFile{
 						Path: outName,
 					}
 					allExtracts = append(allExtracts, myOutputFile)
 				}
-				outData.Name = "dir_request"
-				outData.Files = allExtracts
 			}
 		default:
 			scale.WriteStderr(fmt.Sprintf("Unknown request type %d", cr.RequestType))
 			os.Exit(70)
 		}
-		manifest := scale.FormatManifest([]*scale.OutputData{outData}, nil)
+		manifest := scale.FormatManifestFiles("extract_instructions", allExtracts, nil)
 		scale.WriteJsonFile(path.Join(outdir, "results_manifest.json"), manifest)
-		log.Println("Wrote", manifest.OutputData)
 		os.Exit(0)
 	}
 }
