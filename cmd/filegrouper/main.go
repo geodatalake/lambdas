@@ -36,7 +36,7 @@ func produceJobType() []byte {
 		AddKV("is_operational", true).
 		AddKV("icon_code", "f0b0").
 		AddKV("docker_privileged", false).
-		AddKV("docker_image", "openwhere/scale-grouper:dev").
+		AddKV("docker_image", "openwhere/scale-file-grouper:dev").
 		AddKV("priority", 230).
 		AddKV("max_tries", 3).
 		AddKV("cpus_required", 1.0).
