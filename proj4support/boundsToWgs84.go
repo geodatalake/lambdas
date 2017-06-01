@@ -4,16 +4,12 @@ import (
 
 	"fmt"
 	"math"
-	"os"
-	"log"
-	"bufio"
 	"strings"
 	"github.com/geodatalake/geom"
 	"github.com/geodatalake/geom/proj"
-	"runtime"
 )
 
-func ConvertPoints( epsg  string , points []geom.Point )  (outpoints []geom.Point) {
+func ConvertPoints( epsg  string , points []geom.Point, pathToReadFrom string )  (outpoints []geom.Point) {
 
 	const deg2Rad = math.Pi / 180.0
 	const rad2Deg = 180.0 / math.Pi
@@ -21,65 +17,15 @@ func ConvertPoints( epsg  string , points []geom.Point )  (outpoints []geom.Poin
 	var srcProjection *proj.SR
 
 	// Check if serialization versions of lookups exist
-	if CheckAndLoadMaps() == false {
+	if CheckAndLoadMaps( pathToReadFrom ) == false {
 
-		fmt.Println("Initializing tables")
-		_, fileName, _, _ := runtime.Caller(0)
-		eosIndex :=  strings.LastIndex( fileName, "/")
-		rootStr := fileName[:eosIndex]
-		fullPath := rootStr + "/config/epsg"
-		fmt.Println( fullPath )
-
-		file, err := os.Open( fullPath)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer file.Close()
-
-		var epsgTitle = ""
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-
-			// Look for EPSG Name First
-			newLine := scanner.Text()
-			if strings.IndexAny( newLine, "#" ) == 0 {
-
-				if len( strings.Trim( newLine," ") )> 1 {
-					epsgTitle = newLine[2:len(newLine)]
-					epsgTitle = strings.Replace(epsgTitle, "/", "", -1)
-					epsgTitle = strings.TrimSpace( epsgTitle )
-					epsgTitle = strings.ToUpper(  epsgTitle )
-				} else {
-					epsgTitle = ""
-				}
-			} else if  strings.IndexAny( newLine, "<" ) == 0 && len( epsgTitle ) > 0 {
-
-				// Handle getting the EPSG code and Proj4 String
-				epsgIndex := strings.IndexAny( newLine, ">")
-				var epsgCode = newLine[1:epsgIndex]
-				epsgCode = "EPSG:" + epsgCode
-
-				// Now get proj string
-				var projString = newLine[epsgIndex+1:len(newLine)]
-				projString = strings.Replace(projString, "<>", "",1)
-				projString = strings.TrimSpace( projString)
-
-				totalString := "+title=" + epsgTitle + " " + projString
-
-				AddDef( epsgCode, totalString )
-				AddTitleDef( epsgTitle, totalString)
-			}
-		}
-
-		SerializeMaps()
+		fmt.Println("Failed to load binary map data")
+		return nil
 
 	} else {
 		fmt.Println("Maps already loaded")
 	}
 
-	//if err := scanner.Err(); err != nil {
-	//	log.Fatal(err)
-	//}
 
 	if  strings.Contains( strings.ToUpper(epsg), "EPSG") {
 

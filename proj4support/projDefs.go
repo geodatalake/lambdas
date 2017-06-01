@@ -7,6 +7,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"github.com/geodatalake/geom/proj"
+	"os"
+	"log"
+	"bufio"
+	"strings"
+
 )
 
 const EPSGTITLEFILENAME = "EPSGTITLE.bin"
@@ -118,7 +123,7 @@ func GetDefByTitle( name string ) (*proj.SR, error) {
 	}
 }
 
-func SerializeMaps( ) {
+func SerializeMaps( outpath string  ) {
 
 	var b1 = new(bytes.Buffer)
 
@@ -130,10 +135,15 @@ func SerializeMaps( ) {
 		panic(err)
 	}
 
+	var outModified = ""
+	if len(outpath) > 0 {
+		outModified = outpath + "/"
+	}
+
 	var encodedStr = base64.StdEncoding.EncodeToString( b1.Bytes() )
 	var encodedBytes = []byte(encodedStr)
 
-	err = ioutil.WriteFile( EPSGVALFILENAME, encodedBytes, 0644)
+	err = ioutil.WriteFile( outModified + EPSGVALFILENAME, encodedBytes, 0644)
 	if err != nil {
 		panic(e)
 	}
@@ -151,14 +161,72 @@ func SerializeMaps( ) {
 	encodedStr = base64.StdEncoding.EncodeToString( b2.Bytes() )
 	encodedBytes = []byte(encodedStr)
 
-	err = ioutil.WriteFile( EPSGTITLEFILENAME, encodedBytes, 0644)
+	err = ioutil.WriteFile( outModified + EPSGTITLEFILENAME, encodedBytes, 0644)
 	if err != nil {
 		panic(e)
 	}
 
 }
 
-func CheckAndLoadMaps() ( bool ) {
+func CheckAndLoadMaps( pathToLoad string ) ( bool ) {
+
+	var loaded = false
+
+	var inModified = ""
+	if len(pathToLoad) > 0 {
+		inModified = inModified + "/"
+	}
+
+	var dataRead, err1 = ioutil.ReadFile(inModified + EPSGVALFILENAME)
+	if ( err1 == nil ) {
+
+		//var n = bytes.Index( dataRead, []byte{0} )
+		var s = string( dataRead[:len(dataRead)] )
+
+		var by, err = base64.StdEncoding.DecodeString(s)
+		if ( err != nil ) {
+			return loaded
+		}
+
+		b := bytes.Buffer{}
+		b.Write(by)
+
+		d := gob.NewDecoder(&b)
+		err = d.Decode( &defsByEPSGValue)
+
+		if err == nil {
+
+			dataRead, _ = ioutil.ReadFile(inModified + EPSGVALFILENAME)
+			//var n = bytes.Index(dataRead, []byte{0})
+			var s = string(dataRead[:len(dataRead)])
+
+			by, err = base64.StdEncoding.DecodeString(s)
+			if ( err != nil ) {
+				return loaded
+			}
+
+			b := bytes.Buffer{}
+			b.Write(by)
+
+			d := gob.NewDecoder(&b)
+			err = d.Decode(&defsByEPSGTitle)
+
+			if err != nil {
+				fmt.Println("EPSG Title file not available")
+			} else {
+				loaded = true
+			}
+		}
+
+	} else {
+		fmt.Println("EPSG Value file not available")
+	}
+
+	return loaded
+
+}
+
+func LoadMaps() ( bool ) {
 
 	var loaded = false
 
@@ -210,4 +278,58 @@ func CheckAndLoadMaps() ( bool ) {
 	return loaded
 
 }
+
+func BuildMaps( inpath string, outpath string ) ( bool ) {
+
+
+	var built = false
+	file, err := os.Open( inpath )
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	var epsgTitle = ""
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+
+		// Look for EPSG Name First
+		newLine := scanner.Text()
+		if strings.IndexAny(newLine, "#") == 0 {
+
+			if len(strings.Trim(newLine, " ")) > 1 {
+				epsgTitle = newLine[2:len(newLine)]
+				epsgTitle = strings.Replace(epsgTitle, "/", "", -1)
+				epsgTitle = strings.TrimSpace(epsgTitle)
+				epsgTitle = strings.ToUpper(epsgTitle)
+			} else {
+				epsgTitle = ""
+			}
+		} else if strings.IndexAny(newLine, "<") == 0 && len(epsgTitle) > 0 {
+
+			// Handle getting the EPSG code and Proj4 String
+			epsgIndex := strings.IndexAny(newLine, ">")
+			var epsgCode = newLine[1:epsgIndex]
+			epsgCode = "EPSG:" + epsgCode
+
+			// Now get proj string
+			var projString = newLine[epsgIndex + 1:len(newLine)]
+			projString = strings.Replace(projString, "<>", "", 1)
+			projString = strings.TrimSpace(projString)
+
+			totalString := "+title=" + epsgTitle + " " + projString
+
+			AddDef(epsgCode, totalString)
+			AddTitleDef(epsgTitle, totalString)
+		}
+	}
+
+	SerializeMaps( outpath )
+
+	built = true
+
+	return  built
+}
+
 
