@@ -55,14 +55,14 @@ func produceJobType() []byte {
 		Append("interface", doc().
 			AddKV("version", "1.1").
 			AddKV("command", "/opt/reproject/reprojectbounds").
-			AddKV("command_arguments", "${bounds_result} ${job_output_dir}").
+			AddKV("command_arguments", "${bounds_reproject} ${job_output_dir}").
 			AddKV("shared_resources", []map[string]interface{}{}).
 			AppendArray("output_data", array().
 				Add(doc().
 					AddKV("media_type", "application/json").
 					AddKV("required", true).
 					AddKV("type", "file").
-					AddKV("name", "bounds_result"))).
+					AddKV("name", "index_request"))).
 			AppendArray("input_data", array().
 				Add(doc().
 					AppendArray("media_types", array().
@@ -70,7 +70,7 @@ func produceJobType() []byte {
 					AddKV("required", true).
 					AddKV("partial", false).
 					AddKV("type", "file").
-					AddKV("name", "bounds_result")))).
+					AddKV("name", "bounds_reproject")))).
 		Append("error_mapping", doc().
 			AddKV("version", "1.0").
 			Append("exit_codes", doc().
@@ -196,14 +196,14 @@ func main() {
 			br.Bounds = featureType + "((" + newJsonPairs + "))"
 		}
 		ended := time.Now().UTC()
-		outName := path.Join(outdir, fmt.Sprintf("bounds_result_%s.json", uuid.NewV4().String()))
+		outName := path.Join(outdir, fmt.Sprintf("index_request_%s.json", uuid.NewV4().String()))
 		scale.WriteJsonFile(outName, br)
 		of := new(scale.OutputFile)
 		of.Path = outName
 		of.GeoMetadata = &scale.GeoMetadata{
 			Started: started.Format(bucket.ISO8601FORMAT),
 			Ended:   ended.Format(bucket.ISO8601FORMAT)}
-		manifest := scale.FormatManifestFile("bounds_result", of, nil)
+		manifest := scale.FormatManifestFile("index_request", of, nil)
 		scale.WriteJsonFile(path.Join(outdir, "results_manifest.json"), manifest)
 		os.Exit(0)
 	} else {
