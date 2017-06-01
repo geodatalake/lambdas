@@ -64,7 +64,7 @@ func produceJobTypeExtract() []byte {
 					AppendArray("media_types", array().
 						Add("application/json")).
 					AddKV("required", true).
-					AddKV("partial", true).
+					AddKV("partial", false).
 					AddKV("type", "file").
 					AddKV("name", "extract_instructions")))).
 		Append("error_mapping", doc().
