@@ -108,6 +108,10 @@ func main() {
 	register := flag.String("register", "", "DC/OS Url, requires token")
 	token := flag.String("token", "", "DC/OS token, required for register option")
 	help := flag.Bool("h", false, "This help screen")
+	binBuildSrcPath := flag.String("config", "", "Path to config files to genert binary files.")
+	binBuildDestPath := flag.String("out", "", "Path to write generated binary files.")
+	binReadPath := flag.String("binIn", "/opt/reproject/bins", "Path read binary binary files.")
+
 	flag.Parse()
 
 	if *help {
@@ -117,6 +121,16 @@ func main() {
 
 	if *jobType {
 		fmt.Println(string(produceJobType()))
+		os.Exit(0)
+	}
+
+	if *binBuildSrcPath != "" {
+
+		var destDirectory = ""
+		if *binBuildDestPath != ""  {
+			destDirectory = *binBuildDestPath
+		}
+		proj4support.BuildMaps( *binBuildSrcPath, destDirectory )
 		os.Exit(0)
 	}
 
@@ -133,6 +147,8 @@ func main() {
 	}
 
 	if !*dev {
+
+
 		started := time.Now().UTC()
 		args := flag.Args()
 		if len(args) != 2 {
@@ -188,7 +204,7 @@ func main() {
 				}
 			}
 			fmt.Println(oldPrj)
-			newPts := proj4support.ConvertPoints(oldPrj, pts)
+			newPts := proj4support.ConvertPoints(oldPrj, pts, *binReadPath)
 			var newJsonPairs = ""
 			for _, pt := range newPts {
 				newJsonPairs = newJsonPairs + strconv.FormatFloat(pt.X, 'f', 6, 64) + "," + strconv.FormatFloat(pt.Y, 'f', 6, 64)

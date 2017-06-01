@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"testing"
 	"github.com/geodatalake/geom"
+	"runtime"
+	"strings"
 )
 
 func check( vpt, opt geom.Point, t *testing.T) {
@@ -19,6 +21,19 @@ func check( vpt, opt geom.Point, t *testing.T) {
 	} else {
 		t.Errorf(fmt.Sprintf("Expected %f,%f received %f,%f", vpt.X, vpt.Y, opt.X, opt.Y))
 	}
+}
+
+func TestBuildMaps (t *testing.T) {
+
+	fmt.Println("Initializing tables")
+	_, fileName, _, _ := runtime.Caller(0)
+	eosIndex := strings.LastIndex(fileName, "/")
+	rootStr := fileName[:eosIndex]
+	fullPath := rootStr + "/config/epsg"
+	fmt.Println(fullPath)
+
+	BuildMaps( fullPath, "" )
+
 }
 
 func TestConversionEPSG (t *testing.T) {
@@ -41,7 +56,7 @@ func TestConversionEPSG (t *testing.T) {
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4088009.500000 })
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4081996.500000 })
 
-	outpoints := ConvertPoints( s, testPoints)
+	outpoints := ConvertPoints( s, testPoints, "")
 
 	iCount := len(outpoints)
 
@@ -83,7 +98,7 @@ func TestConversionEPSGNoColon (t *testing.T) {
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4088009.500000 })
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4081996.500000 })
 
-	outpoints := ConvertPoints( s, testPoints)
+	outpoints := ConvertPoints( s, testPoints, "")
 
 	iCount := len(outpoints)
 
@@ -124,7 +139,7 @@ func TestConversionEPSGBackToBack (t *testing.T) {
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4088009.500000 })
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4081996.500000 })
 
-	var outpoints = ConvertPoints( s, testPoints)
+	var outpoints = ConvertPoints( s, testPoints, "")
 	var iCount = len(outpoints)
 	for i := 0; i < iCount; i++ {
 
@@ -155,7 +170,7 @@ func TestConversionEPSGBackToBack (t *testing.T) {
 	testPoints2 = append(testPoints, geom.Point{X: 415450.500000, Y:4088009.500000 })
 	testPoints2 = append(testPoints, geom.Point{X: 415450.500000, Y:4081996.500000 })
 
-	outpoints = ConvertPoints( s, testPoints2)
+	outpoints = ConvertPoints( s, testPoints2, "")
 	iCount = len(outpoints)
 	for i := 0; i < iCount; i++ {
 
@@ -193,7 +208,7 @@ func TestConversionTitle (t *testing.T) {
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4088009.500000 })
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4081996.500000 })
 
-	outpoints := ConvertPoints( s, testPoints)
+	outpoints := ConvertPoints( s, testPoints, "")
 
 	iCount := len(outpoints)
 
@@ -227,7 +242,7 @@ func TestConversionTitleBogusTitle (t *testing.T) {
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4088009.500000 })
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4081996.500000 })
 
-	outpoints := ConvertPoints( s, testPoints)
+	outpoints := ConvertPoints( s, testPoints,"")
 
 	if outpoints == nil {
 		fmt.Println( "Passed")
