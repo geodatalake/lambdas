@@ -209,6 +209,7 @@ func main() {
 				Ended:   ended.Format(bucket.ISO8601FORMAT)}
 			manifest := scale.FormatManifestFile("bounds_result", of, nil)
 			scale.WriteJsonFile(path.Join(outdir, "results_manifest.json"), manifest)
+			log.Println("DONE, exiting successful")
 			os.Exit(0)
 		default:
 			scale.WriteStderr(fmt.Sprintf("Unknown request type %d", cr.RequestType))
