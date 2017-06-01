@@ -24,7 +24,7 @@ func (of *OutputFile) format() *elastichelper.Document {
 }
 
 // Format as a single File manifest regardless of the cardinality of the array
-func FormatManifestFile(name string, files []*OutputFile, parsed []*ParseResult) map[string]interface{} {
+func FormatManifestFile(name string, file *OutputFile, parsed []*ParseResult) map[string]interface{} {
 	retval := doc().
 		AddKV("version", "1.1")
 
@@ -32,7 +32,7 @@ func FormatManifestFile(name string, files []*OutputFile, parsed []*ParseResult)
 		AppendArray("output_data", array().
 			Add(doc().
 				AddKV("name", name).
-				Append("file", files[0].format())))
+				Append("file", file.format())))
 	if parsed != nil && len(parsed) > 0 {
 		results := array()
 		for _, pr := range parsed {

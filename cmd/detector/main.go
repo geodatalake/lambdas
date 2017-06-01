@@ -64,7 +64,7 @@ func produceJobTypeExtract() []byte {
 					AppendArray("media_types", array().
 						Add("application/json")).
 					AddKV("required", true).
-					AddKV("partial", true).
+					AddKV("partial", false).
 					AddKV("type", "file").
 					AddKV("name", "extract_instructions")))).
 		Append("error_mapping", doc().
@@ -207,13 +207,14 @@ func main() {
 			of.GeoMetadata = &scale.GeoMetadata{
 				Started: started.Format(bucket.ISO8601FORMAT),
 				Ended:   ended.Format(bucket.ISO8601FORMAT)}
-			manifest := scale.FormatManifestFile("bounds_result", []*scale.OutputFile{of}, nil)
+			manifest := scale.FormatManifestFile("bounds_result", of, nil)
 			scale.WriteJsonFile(path.Join(outdir, "results_manifest.json"), manifest)
+			log.Println("DONE, exiting successful")
+			os.Exit(0)
 		default:
 			scale.WriteStderr(fmt.Sprintf("Unknown request type %d", cr.RequestType))
 			os.Exit(70)
 		}
-		os.Exit(0)
 	} else {
 		args := flag.Args()
 		for _, arg := range args {
@@ -232,4 +233,5 @@ func main() {
 		}
 		os.Exit(0)
 	}
+	os.Exit(0)
 }
