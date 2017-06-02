@@ -242,7 +242,7 @@ func TestConversionTitleBogusTitle (t *testing.T) {
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4088009.500000 })
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4081996.500000 })
 
-	outpoints := ConvertPoints( s, testPoints,"")
+	outpoints := ConvertPoints( s, testPoints, "")
 
 	if outpoints == nil {
 		fmt.Println( "Passed")

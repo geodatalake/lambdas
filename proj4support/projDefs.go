@@ -109,9 +109,13 @@ func GetDefByEPSG( name string )(*proj.SR, error){
 
 func GetDefByTitle( name string ) (*proj.SR, error) {
 
-	fmt.Println( "GetDefByTitle " + name)
-	fmt.Println(len(defsByEPSGTitle))
+	//fmt.Println( "GetDefByTitle " + name)
+	//fmt.Println(len(defsByEPSGTitle))
 
+	//for cnt,src := range defsByEPSGTitle {
+	//	fmt.Println( cnt)
+	//	fmt.Println( src)
+	//}
 	var epsgForm = defsByEPSGTitle[name]
 
 	if ( epsgForm != nil ) {
@@ -174,8 +178,11 @@ func CheckAndLoadMaps( pathToLoad string ) ( bool ) {
 
 	var inModified = ""
 	if len(pathToLoad) > 0 {
-		inModified = inModified + "/"
+		inModified = pathToLoad + "/"
 	}
+
+	fmt.Println("Passed pathToLoad" + pathToLoad)
+	fmt.Println("Passed inModified" + inModified)
 
 	var dataRead, err1 = ioutil.ReadFile(inModified + EPSGVALFILENAME)
 	if ( err1 == nil ) {
@@ -196,7 +203,7 @@ func CheckAndLoadMaps( pathToLoad string ) ( bool ) {
 
 		if err == nil {
 
-			dataRead, _ = ioutil.ReadFile(inModified + EPSGVALFILENAME)
+			dataRead, _ = ioutil.ReadFile(inModified + EPSGTITLEFILENAME)
 			//var n = bytes.Index(dataRead, []byte{0})
 			var s = string(dataRead[:len(dataRead)])
 
@@ -315,13 +322,16 @@ func BuildMaps( inpath string, outpath string ) ( bool ) {
 
 			// Now get proj string
 			var projString = newLine[epsgIndex + 1:len(newLine)]
-			projString = strings.Replace(projString, "<>", "", 1)
+
+			projString = strings.Replace(projString, "<>", "", -1)
 			projString = strings.TrimSpace(projString)
 
 			totalString := "+title=" + epsgTitle + " " + projString
 
 			AddDef(epsgCode, totalString)
-			AddTitleDef(epsgTitle, totalString)
+			//fmt.Println( "Title is " + epsgTitle + " " + totalString)
+			var newTitle = strings.Replace(epsgTitle, " ", "", -1)
+			AddTitleDef(newTitle, totalString)
 		}
 	}
 

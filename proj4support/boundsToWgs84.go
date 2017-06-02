@@ -44,9 +44,13 @@ func ConvertPoints( epsg  string , points []geom.Point, pathToReadFrom string ) 
 		srcProjection = tempProjection
 	} else {
 
+		fmt.Println("Assuming Title")
 		var titleStr = strings.TrimSpace( epsg )
 		titleStr = strings.Replace( titleStr, "/","",-1)
+		titleStr = strings.Replace( titleStr, " ","",-1)
 		titleStr = strings.ToUpper( titleStr )
+
+		fmt.Println("Searching with: " + titleStr)
 		tempProjection, err  := GetDefByTitle( titleStr )
 
 		if err != nil {
@@ -82,7 +86,7 @@ func ConvertPoints( epsg  string , points []geom.Point, pathToReadFrom string ) 
 		rsltx, rslty, err := trans(points[i].X, points[i].Y)
 
 		if err != nil {
-			fmt.Println( "Error on translateion")
+			fmt.Println( "Error on translation")
 		} else {
 			var sResult1 string = fmt.Sprintf("%.10f", rsltx )
 			var sResult2 string = fmt.Sprintf("%.10f", rslty )
