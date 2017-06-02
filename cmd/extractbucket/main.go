@@ -42,7 +42,7 @@ func produceJobTypeBucket() []byte {
 		AddKV("docker_image", "openwhere/scale-extract-bucket:dev").
 		AddKV("priority", 230).
 		AddKV("max_tries", 3).
-		AddKV("cpus_required", 1.0).
+		AddKV("cpus_required", 2.0).
 		AddKV("mem_required", 8192.0).
 		AddKV("disk_out_const_required", 0.0).
 		AddKV("disk_out_mult_required", 0.0).

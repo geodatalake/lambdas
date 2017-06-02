@@ -48,8 +48,8 @@ func produceJobType() []byte {
 		AddKV("docker_image", "openwhere/scale-reproject:dev").
 		AddKV("priority", 230).
 		AddKV("max_tries", 3).
-		AddKV("cpus_required", 1.0).
-		AddKV("mem_required", 1024.0).
+		AddKV("cpus_required", 2.0).
+		AddKV("mem_required", 4096.0).
 		AddKV("disk_out_const_required", 0.0).
 		AddKV("disk_out_mult_required", 0.0).
 		Append("interface", doc().
@@ -127,10 +127,10 @@ func main() {
 	if *binBuildSrcPath != "" {
 
 		var destDirectory = ""
-		if *binBuildDestPath != ""  {
+		if *binBuildDestPath != "" {
 			destDirectory = *binBuildDestPath
 		}
-		proj4support.BuildMaps( *binBuildSrcPath, destDirectory )
+		proj4support.BuildMaps(*binBuildSrcPath, destDirectory)
 		os.Exit(0)
 	}
 
@@ -147,7 +147,6 @@ func main() {
 	}
 
 	if !*dev {
-
 
 		started := time.Now().UTC()
 		args := flag.Args()
