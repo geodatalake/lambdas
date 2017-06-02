@@ -42,13 +42,15 @@ func (a AWSSigningTransport) RoundTrip(req *http.Request) (*http.Response, error
 }
 
 func main() {
-	host := flag.String("host", "localhost", "Elastic Search Host")
+	host := flag.String("host", "34.223.221.59", "Elastic Search Host")
 	port := flag.String("port", "9200", "Elastic Search Port")
 	auth := flag.String("auth", "", "user:password for elastic basic auth")
 	aws := flag.Bool("aws", false, "Enable aws signing client")
 	meth := flag.String("meth", "http", "Method to use")
 	sniff := flag.Bool("sniff", false, "Enable sniffing")
 	trace := flag.Bool("trace", false, "Enable trace logging")
+	createIndex := flag.Bool("createindex", false, "Force index mapping creation, does not delete it")
+	dropIndex := flag.Bool("dropindex", false, "Force index deletion")
 	help := flag.Bool("h", false, "Shows help info")
 	flag.Parse()
 
@@ -102,10 +104,26 @@ func main() {
 		log.Println("Connection failed:", err)
 		os.Exit(10)
 	}
+
+	if *dropIndex {
+		client.DeleteIndex("sources").Do(ctx)
+		os.Exit(0)
+	}
+
 	mapping := nd().
 		Append("source", nd().
 			Append("properties", nd().
 				Append("name", nd().
+					AddKV("type", "text")).
+				Append("bucket", nd().
+					AddKV("type", "text")).
+				Append("key", nd().
+					AddKV("type", "text")).
+				Append("lastModified", nd().
+					AddKV("type", "date")).
+				Append("type", nd().
+					AddKV("type", "text")).
+				Append("bounds", nd().
 					AddKV("type", "text")).
 				Append("location", elastichelper.NewLocationMapping())))
 
@@ -115,6 +133,11 @@ func main() {
 	if err != nil {
 		log.Println("Index Creation failed:", err)
 		os.Exit(10)
+	}
+
+	if *createIndex {
+		fmt.Println("Index sources Created")
+		os.Exit(0)
 	}
 
 	doc := nd().
