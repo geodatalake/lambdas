@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -12,14 +13,23 @@ import (
 	"log"
 	"os"
 	"path"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/geodatalake/lambdas/bucket"
 	"github.com/geodatalake/lambdas/elastichelper"
-	"github.com/geodatalake/lambdas/geoindex"
 	"github.com/geodatalake/lambdas/scale"
 	"github.com/satori/go.uuid"
+	elastic "gopkg.in/olivere/elastic.v5"
 )
+
+type TraceLogger struct {
+}
+
+func (tl *TraceLogger) Printf(format string, v ...interface{}) {
+	log.Printf(format+"\n", v...)
+}
 
 func doc() *elastichelper.Document {
 	return elastichelper.NewDoc()
@@ -31,17 +41,17 @@ func array() *elastichelper.ArrayBuilder {
 
 func produceJobTypeExtract() []byte {
 	data := doc().
-		AddKV("name", "detect-geo").
+		AddKV("name", "index-elastic").
 		AddKV("version", "1.0.0").
 		AddKV("title", "Detect Geo").
-		AddKV("description", "Extracts bounds and projection from geo files").
+		AddKV("description", "Indexes into Elastic Search").
 		AddKV("category", "testing").
 		AddKV("author_name", "Steve_Ingram").
 		AddKV("author_url", "http://www.example.com").
 		AddKV("is_operational", true).
 		AddKV("icon_code", "f279").
 		AddKV("docker_privileged", false).
-		AddKV("docker_image", "openwhere/scale-detector:dev").
+		AddKV("docker_image", "openwhere/scale-index:dev").
 		AddKV("priority", 230).
 		AddKV("max_tries", 3).
 		AddKV("cpus_required", 2.0).
@@ -50,15 +60,15 @@ func produceJobTypeExtract() []byte {
 		AddKV("disk_out_mult_required", 0.0).
 		Append("interface", doc().
 			AddKV("version", "1.1").
-			AddKV("command", "/opt/detect/detector").
-			AddKV("command_arguments", "${extract_instructions} ${job_output_dir}").
+			AddKV("command", "/opt/index/indexelastic").
+			AddKV("command_arguments", "${index_request} ${job_output_dir}").
 			AddKV("shared_resources", []map[string]interface{}{}).
 			AppendArray("output_data", array().
 				Add(doc().
 					AddKV("media_type", "application/json").
 					AddKV("required", true).
 					AddKV("type", "file").
-					AddKV("name", "bounds_result"))).
+					AddKV("name", "index_record"))).
 			AppendArray("input_data", array().
 				Add(doc().
 					AppendArray("media_types", array().
@@ -66,15 +76,18 @@ func produceJobTypeExtract() []byte {
 					AddKV("required", true).
 					AddKV("partial", false).
 					AddKV("type", "file").
-					AddKV("name", "extract_instructions")))).
+					AddKV("name", "index_request")))).
 		Append("error_mapping", doc().
 			AddKV("version", "1.0").
 			Append("exit_codes", doc().
 				AddKV("10", "bad_num_input").
+				AddKV("11", "es_conn").
 				AddKV("20", "open_input").
 				AddKV("30", "read_input").
+				AddKV("33", "es_auth_format").
 				AddKV("40", "marshal_failure").
 				AddKV("50", "bad_s3_read").
+				AddKV("55", "es_doc_write").
 				AddKV("70", "bad_cluster_request").
 				AddKV("80", "unable_write_output")))
 	b, err := json.MarshalIndent(data.Build(), "", "  ")
@@ -95,6 +108,9 @@ func createErrors(url, token string) {
 	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_s3_read", "Failed S3 Bucket read", "Unable to read S3 bucket", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("bad_cluster_request", "Invalid Cluster Request", "Unknown cluster request", existing))
 	scale.CreateScaleError(url, token, scale.ErrorDoc("unable_write_output", "Unable to write to output", "Unable to write to output", existing))
+	scale.CreateScaleError(url, token, scale.ErrorDoc("es_doc_write", "Unable to write elasticsearch", "Unable to write to ElasticSearch", existing))
+	scale.CreateScaleError(url, token, scale.ErrorDoc("es_conn", "Unable to connect to elasticsearch", "Unable to connect to ElasticSearch", existing))
+	scale.CreateScaleError(url, token, scale.ErrorDoc("es_auth_format", "ElasticSearch auths not formatted correctly", "ElasticSearch auths not formatted correctly", existing))
 }
 
 func registerJobTypes(url, token string) {
@@ -105,11 +121,14 @@ func registerJobTypes(url, token string) {
 
 //  Errors:
 // 10 Bad number of input arguments
+// 11 ElasticSearch connection failed
 // 15 Bad Aws Session
 // 20 Unable to open input
 // 30 Unable to read input
+// 33 Bad elastic search auths
 // 40 Unable to marshal cluster request
 // 50 Unable to read S3 bucket
+// 55 Elastic Search Document creation failed
 // 70 Unknown cluster request
 // 80 Unable to write to output
 func main() {
@@ -117,6 +136,12 @@ func main() {
 	jobType := flag.Bool("jt", false, "Output job type JSON to stdout")
 	register := flag.String("register", "", "DC/OS Url, requires token")
 	token := flag.String("token", "", "DC/OS token, required for register option")
+	host := flag.String("host", "34.223.221.59", "Elastic Search host instance")
+	port := flag.String("port", "9200", "ElasticSearch port")
+	auth := flag.String("auth", "elastic:changeme", "Elastic Search authentication to use")
+	meth := flag.String("meth", "http", "Method to use")
+	sniff := flag.Bool("sniff", false, "Enable sniffing")
+	trace := flag.Bool("trace", false, "Enable trace logging")
 	help := flag.Bool("h", false, "This help screen")
 	flag.Parse()
 
@@ -162,75 +187,103 @@ func main() {
 			os.Exit(30)
 		}
 		f.Close()
-		var cr geoindex.ClusterRequest
-		if errJson := json.Unmarshal(b, &cr); errJson != nil {
+		var br scale.BoundsResult
+		if errJson := json.Unmarshal(b, &br); errJson != nil {
 			scale.WriteStderr(errJson.Error())
 			os.Exit(40)
 		}
-		switch cr.RequestType {
-		case geoindex.ExtractFileType:
-			file := cr.File.File
-			log.Println("Processing", cr.File.File)
-			bf := file.AsBucketFile()
-			data := &scale.BoundsResult{Bucket: bf.Bucket, Key: bf.Key, Region: bf.Region, LastModified: bf.LastModified}
-			if len(cr.File.Aux) > 0 {
-				data.AuxFiles = make([]*scale.AuxResultFile, 0, len(cr.File.Aux))
-				for _, f := range cr.File.Aux {
-					data.AuxFiles = append(data.AuxFiles, &scale.AuxResultFile{Bucket: f.Bucket, Key: f.Key, Region: f.Region, LastModified: f.LastModified})
-				}
-			}
-			if ext := path.Ext(file.Key); ext != "" {
-				data.Extension = ext
-			}
-			sess, err := scale.GetAwsSession()
-			if err != nil {
-				scale.WriteStderr(err.Error())
-				os.Exit(15)
-			}
-			stream := bf.Stream(sess)
-			resp, err := geoindex.DetectType(stream)
-			if err != nil {
-				log.Println("Not a geo")
-			} else {
-				data.Bounds = resp.Bounds
-				data.Prj = resp.Prj
-				data.Type = resp.Typ
-				if resp.LastModified != "" {
-					data.LastModified = resp.LastModified
-				}
-			}
-			ended := time.Now().UTC()
-			outName := path.Join(outdir, fmt.Sprintf("bounds_result_%s.json", uuid.NewV4().String()))
-			scale.WriteJsonFile(outName, data)
-			of := new(scale.OutputFile)
-			of.Path = outName
-			of.GeoMetadata = &scale.GeoMetadata{
-				Started: started.Format(bucket.ISO8601FORMAT),
-				Ended:   ended.Format(bucket.ISO8601FORMAT)}
-			manifest := scale.FormatManifestFile("bounds_result", of, nil)
-			scale.WriteJsonFile(path.Join(outdir, "results_manifest.json"), manifest)
-			log.Println("DONE, exiting successful")
-			os.Exit(0)
-		default:
-			scale.WriteStderr(fmt.Sprintf("Unknown request type %d", cr.RequestType))
-			os.Exit(70)
+
+		ctx := context.Background()
+
+		url := fmt.Sprintf("%s://%s:%s", *meth, *host, *port)
+		log.Println("Using", url, "sniff is", *sniff)
+		logger := &TraceLogger{}
+		opts := make([]elastic.ClientOptionFunc, 0, 16)
+		opts = append(opts, elastic.SetURL(url))
+		opts = append(opts, elastic.SetScheme(*meth))
+		opts = append(opts, elastic.SetHealthcheckTimeout(time.Second*10))
+		opts = append(opts, elastic.SetHealthcheckTimeoutStartup(time.Second*10))
+		opts = append(opts, elastic.SetSniff(*sniff))
+		opts = append(opts, elastic.SetInfoLog(logger))
+		opts = append(opts, elastic.SetErrorLog(logger))
+		if *trace {
+			opts = append(opts, elastic.SetTraceLog(logger))
 		}
-	} else {
-		args := flag.Args()
-		for _, arg := range args {
-			f, err := os.Open(arg)
-			if err != nil {
-				log.Println(err)
-				os.Exit(10)
+		if *auth != "" {
+			splits := strings.Split(*auth, ":")
+			if len(splits) != 2 {
+				log.Println("Auth must be username:password format")
+				os.Exit(33)
 			}
-			resp, err1 := geoindex.DetectType(f)
-			f.Close()
+			opts = append(opts, elastic.SetBasicAuth(splits[0], splits[1]))
+		}
+
+		client, err := elastic.NewClient(opts...)
+
+		if err != nil {
+			log.Println("Connection failed:", err)
+			os.Exit(11)
+		}
+
+		nd := doc().
+			AddKV("bucket", br.Bucket).
+			AddKV("key", br.Key).
+			AddKV("lastModified", br.LastModified).
+			AddKV("region", br.Region)
+
+		// "POLYGON ((%.7f %7f, %.7f %7f, %.7f %7f, %.7f %7f, %.7f %7f))"
+		// minX, maxY, maxX, maxY, maxX, minY
+		if strings.HasPrefix(br.Bounds, "POLYGON ((") {
+			allErrors := make(map[string]error)
+			points := strings.Split(br.Bounds[10:], ",")
+			minX, err1 := strconv.ParseFloat(strings.TrimSpace(points[0]), 64)
 			if err1 != nil {
-				log.Println(err1)
-				os.Exit(20)
+				allErrors[strings.TrimSpace(points[0])] = err1
 			}
-			log.Println(resp.Bounds, resp.Prj, resp.Typ, resp.LastModified)
+			maxY, err2 := strconv.ParseFloat(strings.TrimSpace(points[1]), 64)
+			if err2 != nil {
+				allErrors[strings.TrimSpace(points[1])] = err2
+			}
+			maxX, err3 := strconv.ParseFloat(strings.TrimSpace(points[2]), 64)
+			if err3 != nil {
+				allErrors[strings.TrimSpace(points[2])] = err3
+			}
+			minY, err4 := strconv.ParseFloat(strings.TrimSpace(points[5]), 64)
+			if err4 != nil {
+				allErrors[strings.TrimSpace(points[5])] = err4
+			}
+			if len(allErrors) > 0 {
+				scale.WriteStderr(fmt.Sprintf("Parsing errors: %v", allErrors))
+			} else {
+				nd.
+					AddKV("bounds", br.Bounds).
+					AddKV("projection", br.Prj).
+					AddKV("type", br.Type).
+					AddKV("location", elastichelper.MakeEnvelope(maxY, minX, minY, maxX))
+			}
 		}
+		_, err = client.Index().Index("sources").Type("source").BodyJson(nd.Build()).Refresh("true").Do(ctx)
+		if err != nil {
+			scale.WriteStderr(fmt.Sprintf("Document Creation failed: %v", err))
+			os.Exit(55)
+		}
+		ended := time.Now().UTC()
+		data := doc().AddKV("result", "Success").
+			AddKV("bucket", br.Bucket).
+			AddKV("key", br.Key).
+			AddKV("region", br.Region).Build()
+		outName := path.Join(outdir, fmt.Sprintf("index_record_%s.json", uuid.NewV4().String()))
+		scale.WriteJsonFile(outName, data)
+		of := new(scale.OutputFile)
+		of.Path = outName
+		of.GeoMetadata = &scale.GeoMetadata{
+			Started: started.Format(bucket.ISO8601FORMAT),
+			Ended:   ended.Format(bucket.ISO8601FORMAT)}
+		manifest := scale.FormatManifestFile("index_record", of, nil)
+		scale.WriteJsonFile(path.Join(outdir, "results_manifest.json"), manifest)
+		os.Exit(0)
+	} else {
+		fmt.Println("No -dev option available")
 		os.Exit(0)
 	}
 	os.Exit(0)
