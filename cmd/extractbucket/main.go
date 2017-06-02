@@ -43,7 +43,7 @@ func produceJobTypeBucket() []byte {
 		AddKV("priority", 230).
 		AddKV("max_tries", 3).
 		AddKV("cpus_required", 2.0).
-		AddKV("mem_required", 8192.0).
+		AddKV("mem_required", 2048.0).
 		AddKV("disk_out_const_required", 0.0).
 		AddKV("disk_out_mult_required", 0.0).
 		Append("interface", doc().

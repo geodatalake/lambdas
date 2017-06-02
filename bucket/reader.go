@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	ISO8601FORMAT = "20060102T150405Z"
+	ISO8601FORMAT = "2006-01-02T15:04:05Z"
 )
 
 func mineAllObjects(bucket, path string, svc *s3.S3) ([]*s3.Object, error) {
