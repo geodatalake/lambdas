@@ -234,23 +234,29 @@ func main() {
 		// "POLYGON ((%.7f %7f, %.7f %7f, %.7f %7f, %.7f %7f, %.7f %7f))"
 		// minX, maxY, maxX, maxY, maxX, minY
 		if strings.HasPrefix(br.Bounds, "POLYGON ((") {
+			var minX, minY, maxX, maxY float64
+			var err1, err2, err3, err4 error
 			allErrors := make(map[string]error)
 			points := strings.Split(br.Bounds[10:], ",")
-			minX, err1 := strconv.ParseFloat(strings.TrimSpace(points[0]), 64)
-			if err1 != nil {
-				allErrors[strings.TrimSpace(points[0])] = err1
-			}
-			maxY, err2 := strconv.ParseFloat(strings.TrimSpace(points[1]), 64)
-			if err2 != nil {
-				allErrors[strings.TrimSpace(points[1])] = err2
-			}
-			maxX, err3 := strconv.ParseFloat(strings.TrimSpace(points[2]), 64)
-			if err3 != nil {
-				allErrors[strings.TrimSpace(points[2])] = err3
-			}
-			minY, err4 := strconv.ParseFloat(strings.TrimSpace(points[5]), 64)
-			if err4 != nil {
-				allErrors[strings.TrimSpace(points[5])] = err4
+			if len(points) < 7 {
+				allErrors["short points"] = fmt.Errorf("Not enough points [%d] in bounds: %s", len(points), br.Bounds)
+			} else {
+				minX, err1 = strconv.ParseFloat(strings.TrimSpace(points[0]), 64)
+				if err1 != nil {
+					allErrors[strings.TrimSpace(points[0])] = err1
+				}
+				maxY, err2 = strconv.ParseFloat(strings.TrimSpace(points[1]), 64)
+				if err2 != nil {
+					allErrors[strings.TrimSpace(points[1])] = err2
+				}
+				maxX, err3 = strconv.ParseFloat(strings.TrimSpace(points[2]), 64)
+				if err3 != nil {
+					allErrors[strings.TrimSpace(points[2])] = err3
+				}
+				minY, err4 = strconv.ParseFloat(strings.TrimSpace(points[5]), 64)
+				if err4 != nil {
+					allErrors[strings.TrimSpace(points[5])] = err4
+				}
 			}
 			if len(allErrors) > 0 {
 				scale.WriteStderr(fmt.Sprintf("Parsing errors: %v", allErrors))
