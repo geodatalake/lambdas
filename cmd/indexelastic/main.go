@@ -43,13 +43,13 @@ func produceJobTypeExtract() []byte {
 	data := doc().
 		AddKV("name", "index-elastic").
 		AddKV("version", "1.0.0").
-		AddKV("title", "Detect Geo").
+		AddKV("title", "Index Elastic").
 		AddKV("description", "Indexes into Elastic Search").
 		AddKV("category", "testing").
 		AddKV("author_name", "Steve_Ingram").
 		AddKV("author_url", "http://www.example.com").
 		AddKV("is_operational", true).
-		AddKV("icon_code", "f279").
+		AddKV("icon_code", "f07b").
 		AddKV("docker_privileged", false).
 		AddKV("docker_image", "openwhere/scale-index:dev").
 		AddKV("priority", 230).
