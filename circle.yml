@@ -36,7 +36,6 @@ dependencies:
     - go build $IMPORT_PATH/datalake
     - go build $IMPORT_PATH/elastichelper
     - go build $IMPORT_PATH/proj4support
-    - go build $IMPORT_PATH/cmd/elastictest
     - go build $IMPORT_PATH/raster
     - go build $IMPORT_PATH/vector
     - go build $IMPORT_PATH/geoindex
@@ -51,6 +50,8 @@ dependencies:
     - cp reprojectbounds $CIRCLE_ARTIFACTS
     - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/elastictest
     - cp elastictest $CIRCLE_ARTIFACTS
+    - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/indexelastic
+    - cp indexelastic $CIRCLE_ARTIFACTS
 
 test:
   pre:
@@ -69,6 +70,7 @@ test:
     - go vet $IMPORT_PATH/cmd/filegrouper
     - go vet $IMPORT_PATH/cmd/reprojectbounds
     - go vet $IMPORT_PATH/cmd/elastictest
+    - go vet $IMPORT_PATH/cmd/indexelastic
 
   override:
     - go test $IMPORT_PATH/geotiff
@@ -99,3 +101,7 @@ deployment:
       - docker build -t scale-reproject cmd/reprojectbounds
       - docker tag -f scale-reproject openwhere/scale-reproject:dev
       - docker push openwhere/scale-reproject:dev
+      - cp indexelastic cmd/indexelastic
+      - docker build -t scale-index cmd/indexelastic
+      - docker tag -f scale-index openwhere/scale-index:dev
+      - docker push openwhere/scale-index:dev
