@@ -4,6 +4,7 @@
 
 package elastichelper
 
+
 func FormatCoords(lat, lon float64) []float64 {
 	return []float64{lon, lat}
 }
@@ -16,7 +17,7 @@ func ComposeCoords(coords ...[]float64) [][]float64 {
 	return retval
 }
 
-func MakeBboxClockwisePolygon(topLeftLat, topLeftLon, bottomRightLat, bottomRightLon float64) [][][]float64 {
+func MakeBboxClockwisePolygon(topLeftLat, topLeftLon, bottomRightLat, bottomRightLon float64) [][]float64 {
 	retval := make([][][]float64, 0, 1)
 	top, bottom := topLeftLat, bottomRightLat
 	left, right := topLeftLon, bottomRightLon
@@ -26,7 +27,7 @@ func MakeBboxClockwisePolygon(topLeftLat, topLeftLon, bottomRightLat, bottomRigh
 	bottomLeft := FormatCoords(bottom, left)
 	ring := ComposeCoords(topLeft, topRight, bottomRight, bottomLeft, topLeft)
 	retval = append(retval, ring)
-	return retval
+	return ring
 }
 
 func MakeEnvelope(topLeftLat, topLeftLon, bottomRightLat, bottomRightLon float64) [][]float64 {
@@ -61,7 +62,7 @@ func (ab *ArrayBuilder) Add(val interface{}) *ArrayBuilder {
 	if db, ok := val.(DocBuilder); ok {
 		ab.items = append(ab.items, db.Build())
 	} else {
-		ab.items = append(ab.items, val)
+		ab.items = append( ab.items, val )
 	}
 	return ab
 }

@@ -123,7 +123,7 @@ func registerJobTypes(url, token string) {
 // 10 Bad number of input arguments
 // 11 ElasticSearch connection failed
 // 15 Bad Aws Session
-// 20 Unable to open input
+// 20 Unable to open input./
 // 30 Unable to read input
 // 33 Bad elastic search auths
 // 40 Unable to marshal cluster request
@@ -259,16 +259,32 @@ func main() {
 				}
 			}
 			if len(allErrors) > 0 {
+
 				scale.WriteStderr(fmt.Sprintf("Parsing errors: %v", allErrors))
+
 			} else {
-				nd.
-					AddKV("bounds", br.Bounds).
+
+				elastichelper.MakeEnvelope(maxY, minX, minY, maxX)
+
+				retval := elastichelper.MakeBboxClockwisePolygon(maxY, minX, minY, maxX)
+				
+				results := array()
+				results.Add( retval )
+
+				ndLocation := doc().AddKV( "type", "polygon").
+					AppendArray( "coordinates", results ).Build()
+
+				nd.AddKV("bounds", br.Bounds).
 					AddKV("projection", br.Prj).
 					AddKV("type", br.Type).
-					AddKV("location", elastichelper.MakeEnvelope(maxY, minX, minY, maxX))
+					AddKV("location", ndLocation )
+
 			}
 		}
+
 		_, err = client.Index().Index("sources").Type("source").BodyJson(nd.Build()).Refresh("true").Do(ctx)
+
+
 		if err != nil {
 			scale.WriteStderr(fmt.Sprintf("Document Creation failed: %v", err))
 			os.Exit(55)
