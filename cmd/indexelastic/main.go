@@ -237,7 +237,23 @@ func main() {
 			var minX, minY, maxX, maxY float64
 			var err1, err2, err3, err4 error
 			allErrors := make(map[string]error)
-			points := strings.Split(br.Bounds[10:], ",")
+			pointxy := strings.Split( br.Bounds[10:], "," )
+			var points = strings.Split(pointxy[0], " ")
+			fmt.Println( len( points ))
+			var pointsTmp = strings.Split(pointxy[1], " ")
+			points = append( points, pointsTmp[0] )
+			points = append( points, pointsTmp[1] )
+			fmt.Println( len( points ))
+			pointsTmp = strings.Split(pointxy[2], " ")
+			points = append( points, pointsTmp[0] )
+			points = append( points, pointsTmp[1] )
+			fmt.Println( len( points ))
+			pointsTmp = strings.Split(pointxy[3], " ")
+			points = append( points, pointsTmp[0] )
+			points = append( points, pointsTmp[1] )
+			fmt.Println( len( points ))
+
+
 			if len(points) < 7 {
 				allErrors["short points"] = fmt.Errorf("Not enough points [%d] in bounds: %s", len(points), br.Bounds)
 			} else {
