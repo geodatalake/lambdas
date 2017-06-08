@@ -206,8 +206,9 @@ func main() {
 			newPts := proj4support.ConvertPoints(oldPrj, pts, *binReadPath)
 			var newJsonPairs = ""
 			for _, pt := range newPts {
-				newJsonPairs = newJsonPairs + strconv.FormatFloat(pt.X, 'f', 6, 64) + "," + strconv.FormatFloat(pt.Y, 'f', 6, 64)
+				newJsonPairs = newJsonPairs + strconv.FormatFloat(pt.X, 'f', 6, 64) + "," + strconv.FormatFloat(pt.Y, 'f', 6, 64)+","
 			}
+			newJsonPairs = strings.TrimSuffix(newJsonPairs, "," )
 			br.Bounds = featureType + "((" + newJsonPairs + "))"
 		}
 		ended := time.Now().UTC()
