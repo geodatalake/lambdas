@@ -24,13 +24,24 @@ type HandleReturn struct {
 	LastModified string
 }
 
+func getProjection(rtype geotiff.Tiff) string {
+	var value interface{}
+	var err error
+	if value, err = rtype.GetGeoKeyValue(geotiff.GeoKeyProjectedCSTypeGeoKey); err == nil {
+		return value.(string)
+	}
+	if value, err = rtype.GetGeoKeyValue(geotiff.GeoKeyGeographicType); err == nil {
+		return value.(string)
+	}
+	return "GCS_WGS_84"
+}
+
 func handleRaster(r interface{}) (*HandleReturn, error) {
 	switch rtype := r.(type) {
 	case geotiff.Tiff:
 		if rtype.IsGeotiff() {
-			if value, err := rtype.GetGeoKeyValue(geotiff.GeoKeyProjectedCSTypeGeoKey); err != nil {
-				return nil, err
-			} else if bounds, err1 := rtype.Bounds(); err1 != nil {
+			value := getProjection(rtype)
+			if bounds, err1 := rtype.Bounds(); err1 != nil {
 				return nil, err1
 			} else {
 				lastModified := ""
@@ -38,7 +49,7 @@ func handleRaster(r interface{}) (*HandleReturn, error) {
 				if err == nil {
 					lastModified = tm.UTC().Format(bucket.ISO8601FORMAT)
 				}
-				return &HandleReturn{Bounds: bounds.AsWkt(), Prj: value.(string), Typ: "geotiff", LastModified: lastModified}, nil
+				return &HandleReturn{Bounds: bounds.AsWkt(), Prj: value, Typ: "geotiff", LastModified: lastModified}, nil
 			}
 		}
 	case lidar.Las:
