@@ -78,6 +78,7 @@ test:
     - go test $IMPORT_PATH/datalake
     - go test $IMPORT_PATH/scale
     - go test $IMPORT_PATH/proj4support
+    - go test $IMPORT_PATH/elastichelper
 
 deployment:
   dev:
