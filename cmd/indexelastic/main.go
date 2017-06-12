@@ -233,73 +233,49 @@ func main() {
 
 		// "POLYGON ((%.7f %7f, %.7f %7f, %.7f %7f, %.7f %7f, %.7f %7f))"
 		// minX, maxY, maxX, maxY, maxX, minY
-		if strings.HasPrefix(br.Bounds, "POLYGON ((") {
+		if points, ok := elastichelper.ExtractPolygonPoints(br.Bounds); ok {
 			var minX, minY, maxX, maxY float64
-			var err1, err2, err3, err4 error
 			allErrors := make(map[string]error)
-			pointxy := strings.Split( br.Bounds[10:], "," )
-			var points = strings.Split(pointxy[0], " ")
-			fmt.Println( len( points ))
-			var pointsTmp = strings.Split(pointxy[1], " ")
-			points = append( points, pointsTmp[0] )
-			points = append( points, pointsTmp[1] )
-			fmt.Println( len( points ))
-			pointsTmp = strings.Split(pointxy[2], " ")
-			points = append( points, pointsTmp[0] )
-			points = append( points, pointsTmp[1] )
-			fmt.Println( len( points ))
-			pointsTmp = strings.Split(pointxy[3], " ")
-			points = append( points, pointsTmp[0] )
-			points = append( points, pointsTmp[1] )
-			fmt.Println( len( points ))
-
-
-			if len(points) < 7 {
+			if len(points) < 6 {
 				allErrors["short points"] = fmt.Errorf("Not enough points [%d] in bounds: %s", len(points), br.Bounds)
 			} else {
-				minX, err1 = strconv.ParseFloat(strings.TrimSpace(points[0]), 64)
-				if err1 != nil {
-					allErrors[strings.TrimSpace(points[0])] = err1
-				}
-				maxY, err2 = strconv.ParseFloat(strings.TrimSpace(points[1]), 64)
-				if err2 != nil {
-					allErrors[strings.TrimSpace(points[1])] = err2
-				}
-				maxX, err3 = strconv.ParseFloat(strings.TrimSpace(points[2]), 64)
-				if err3 != nil {
-					allErrors[strings.TrimSpace(points[2])] = err3
-				}
-				minY, err4 = strconv.ParseFloat(strings.TrimSpace(points[5]), 64)
-				if err4 != nil {
-					allErrors[strings.TrimSpace(points[5])] = err4
+				want := []int{0, 1, 2, 5}
+				for i, w := range want {
+					if val, err := strconv.ParseFloat(points[w], 64); err != nil {
+						allErrors[points[w]] = err
+					} else {
+						switch i {
+						case 0:
+							minX = val
+						case 1:
+							maxY = val
+						case 2:
+							maxX = val
+						case 3:
+							minY = val
+						}
+					}
 				}
 			}
 			if len(allErrors) > 0 {
-
 				scale.WriteStderr(fmt.Sprintf("Parsing errors: %v", allErrors))
-
 			} else {
-
-				elastichelper.MakeEnvelope(maxY, minX, minY, maxX)
-
 				retval := elastichelper.MakeBboxClockwisePolygon(maxY, minX, minY, maxX)
-				
-				results := array()
-				results.Add( retval )
 
-				ndLocation := doc().AddKV( "type", "polygon").
-					AppendArray( "coordinates", results ).Build()
+				results := array()
+				results.Add(retval)
+
+				ndLocation := doc().AddKV("type", "polygon").
+					AppendArray("coordinates", results).Build()
 
 				nd.AddKV("bounds", br.Bounds).
 					AddKV("projection", br.Prj).
 					AddKV("type", br.Type).
-					AddKV("location", ndLocation )
-
+					AddKV("location", ndLocation)
 			}
 		}
 
 		_, err = client.Index().Index("sources").Type("source").BodyJson(nd.Build()).Refresh("true").Do(ctx)
-
 
 		if err != nil {
 			scale.WriteStderr(fmt.Sprintf("Document Creation failed: %v", err))
