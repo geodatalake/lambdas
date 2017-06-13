@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/geodatalake/geom/proj"
 )
@@ -299,6 +300,7 @@ var mapsLoaded bool
 
 func CheckAndLoadMaps(pathToLoad string) bool {
 	onceBody := func() {
+		start := time.Now()
 		mapsLoaded = false
 		inModified := ""
 		if len(pathToLoad) > 0 {
@@ -343,6 +345,7 @@ func CheckAndLoadMaps(pathToLoad string) bool {
 		} else {
 			log.Println("EPSG Value file not available")
 		}
+		log.Println("Loading maps took", time.Now().Sub(start))
 	}
 	once.Do(onceBody)
 	return mapsLoaded
