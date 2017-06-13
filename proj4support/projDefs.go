@@ -219,34 +219,20 @@ func AddTitleDef(name, def string) error {
 }
 
 func GetDefByEPSG(name string) (*proj.SR, error) {
-
-	fmt.Println("GetDefByEPSG " + name)
-	fmt.Println(len(defsByEPSGValue))
-	fmt.Println(defsByEPSGValue[name])
-
-	var epsgForm = defsByEPSGValue[name]
-
-	proj.RestoreDatumExposed(epsgForm.Projection, epsgForm.Datum)
-
-	if epsgForm != nil {
+	if epsgForm, ok := defsByEPSGValue[name]; ok {
 		proj.RestoreDatumExposed(epsgForm.Projection, epsgForm.Datum)
-
 		return epsgForm.Projection, nil
 	} else {
-		return nil, fmt.Errorf("No Valid Projection found by EPSG Value Title]")
+		return nil, fmt.Errorf("No Valid Projection found by EPSG Value: %s", name)
 	}
 }
 
 func GetDefByTitle(name string) (*proj.SR, error) {
-
-	var epsgForm = defsByEPSGTitle[name]
-
-	if epsgForm != nil {
+	if epsgForm, ok := defsByEPSGTitle[name]; ok {
 		proj.RestoreDatumExposed(epsgForm.Projection, epsgForm.Datum)
-
 		return epsgForm.Projection, nil
 	} else {
-		return nil, fmt.Errorf("No Valid Projection found for Title]")
+		return nil, fmt.Errorf("No Valid Projection found for Title: %s", name)
 	}
 }
 
