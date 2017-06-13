@@ -56,7 +56,7 @@ func TestConversionEPSG (t *testing.T) {
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4088009.500000 })
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4081996.500000 })
 
-	outpoints := ConvertPoints( s, testPoints, "")
+	outpoints,_ := ConvertPoints( s, testPoints, "")
 
 	iCount := len(outpoints)
 
@@ -98,7 +98,7 @@ func TestConversionEPSGNoColon (t *testing.T) {
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4088009.500000 })
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4081996.500000 })
 
-	outpoints := ConvertPoints( s, testPoints, "")
+	outpoints,_ := ConvertPoints( s, testPoints, "")
 
 	iCount := len(outpoints)
 
@@ -139,7 +139,7 @@ func TestConversionEPSGBackToBack (t *testing.T) {
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4088009.500000 })
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4081996.500000 })
 
-	var outpoints = ConvertPoints( s, testPoints, "")
+	var outpoints,_ = ConvertPoints( s, testPoints, "")
 	var iCount = len(outpoints)
 	for i := 0; i < iCount; i++ {
 
@@ -170,7 +170,7 @@ func TestConversionEPSGBackToBack (t *testing.T) {
 	testPoints2 = append(testPoints, geom.Point{X: 415450.500000, Y:4088009.500000 })
 	testPoints2 = append(testPoints, geom.Point{X: 415450.500000, Y:4081996.500000 })
 
-	outpoints = ConvertPoints( s, testPoints2, "")
+	outpoints, _ = ConvertPoints( s, testPoints2, "")
 	iCount = len(outpoints)
 	for i := 0; i < iCount; i++ {
 
@@ -208,7 +208,7 @@ func TestConversionTitle (t *testing.T) {
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4088009.500000 })
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4081996.500000 })
 
-	outpoints := ConvertPoints( s, testPoints, "")
+	outpoints, _:= ConvertPoints( s, testPoints, "")
 
 	iCount := len(outpoints)
 
@@ -242,9 +242,9 @@ func TestConversionTitleBogusTitle (t *testing.T) {
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4088009.500000 })
 	testPoints = append(testPoints, geom.Point{X: 415450.500000, Y:4081996.500000 })
 
-	outpoints := ConvertPoints( s, testPoints, "")
+	_, result := ConvertPoints( s, testPoints, "")
 
-	if outpoints == nil {
+	if result == false {
 		fmt.Println( "Passed")
 	} else {
 		t.Errorf(fmt.Sprintf("Expected no output points"))
@@ -275,7 +275,7 @@ func TestGCSDatumCode(t *testing.T) {
 	validPoints = append(validPoints, geom.Point{ X: -87.9494215714, Y: 36.9361700862})
 	validPoints = append(validPoints, geom.Point{ X: -87.9487501406, Y: 36.8819716642})
 
-	outpoints := ConvertPoints( s, testPoints, "")
+	outpoints, _:= ConvertPoints( s, testPoints, "")
 
 	iCount := len(outpoints)
 
