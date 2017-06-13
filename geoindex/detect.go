@@ -50,7 +50,7 @@ func handleRaster(r interface{}, proj Projector) (*HandleReturn, error) {
 					lastModified = tm.UTC().Format(bucket.ISO8601FORMAT)
 				}
 				if proj != nil {
-					if value != "GCS_WGS_84" && value != "EPSG 4326" {
+					if value != "GCS_WGS_84" && value != "EPSG 4326" && value != "" {
 						bounds = proj.Convert(value, bounds)
 					}
 					return &HandleReturn{Bounds: bounds.AsWkt(), Prj: "EPSG 4326", Typ: "geotiff", LastModified: lastModified}, nil
@@ -77,7 +77,7 @@ func handleRaster(r interface{}, proj Projector) (*HandleReturn, error) {
 				return &HandleReturn{Bounds: bounds.AsWkt(), Prj: "EPSG 4326", Typ: "lidar", LastModified: lastModified}, nil
 			} else {
 				if proj != nil {
-					if prj != "GCS_WGS_84" && prj != "EPSG 4326" {
+					if prj != "GCS_WGS_84" && prj != "EPSG 4326" && prj != "" {
 						bounds = proj.Convert(prj, bounds)
 					}
 					return &HandleReturn{Bounds: bounds.AsWkt(), Prj: "EPSG 4326", Typ: "lidar", LastModified: lastModified}, nil
