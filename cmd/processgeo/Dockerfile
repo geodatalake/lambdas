@@ -6,7 +6,7 @@ RUN mkdir /opt/processgeo && mv processgeo /opt/processgeo/processgeo && chmod +
 
 ADD EPSGTITLE.bin .
 ADD EPSGVAL.bin .
-RUN mkdir /opt/reproject/bins && mv EPSG*.bin /opt/reproject/bins
+RUN mkdir /opt/reproject && mkdir /opt/reproject/bins && mv EPSG*.bin /opt/reproject/bins
 
 WORKDIR /opt/processgeo
 ENTRYPOINT [ "/opt/processgeo/processgeo" ]

@@ -39,14 +39,10 @@ dependencies:
     - go build $IMPORT_PATH/vector
     - go build $IMPORT_PATH/geoindex
     - go build $IMPORT_PATH/scale
-    - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/detector
-    - cp detector $CIRCLE_ARTIFACTS
     - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/extractbucket
     - cp extractbucket $CIRCLE_ARTIFACTS
     - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/filegrouper
     - cp filegrouper $CIRCLE_ARTIFACTS
-    - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/reprojectbounds
-    - cp reprojectbounds $CIRCLE_ARTIFACTS
     - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/elastictest
     - cp elastictest $CIRCLE_ARTIFACTS
     - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/indexelastic
@@ -66,10 +62,8 @@ test:
     - go vet $IMPORT_PATH/vector
     - go vet $IMPORT_PATH/geoindex
     - go vet $IMPORT_PATH/scale
-    - go vet $IMPORT_PATH/cmd/detector
     - go vet $IMPORT_PATH/cmd/extractbucket
     - go vet $IMPORT_PATH/cmd/filegrouper
-    - go vet $IMPORT_PATH/cmd/reprojectbounds
     - go vet $IMPORT_PATH/cmd/elastictest
     - go vet $IMPORT_PATH/cmd/indexelastic
     - go vet $IMPORT_PATH/cmd/processgeo
@@ -88,10 +82,6 @@ deployment:
     owner: geodatalake
     commands:
       - docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASSWORD
-      - cp detector cmd/detector
-      - docker build -t scale-detector cmd/detector
-      - docker tag -f scale-detector openwhere/scale-detector:dev
-      - docker push openwhere/scale-detector:dev
       - cp extractbucket cmd/extractbucket
       - docker build -t scale-extract-bucket cmd/extractbucket
       - docker tag -f scale-extract-bucket openwhere/scale-extract-bucket:dev
@@ -100,10 +90,6 @@ deployment:
       - docker build -t scale-file-grouper cmd/filegrouper
       - docker tag -f scale-file-grouper openwhere/scale-file-grouper:dev
       - docker push openwhere/scale-file-grouper:dev
-      - cp reprojectbounds cmd/reprojectbounds
-      - docker build -t scale-reproject cmd/reprojectbounds
-      - docker tag -f scale-reproject openwhere/scale-reproject:dev
-      - docker push openwhere/scale-reproject:dev
       - cp indexelastic cmd/indexelastic
       - docker build -t scale-index cmd/indexelastic
       - docker tag -f scale-index openwhere/scale-index:dev
