@@ -7,6 +7,7 @@ package vector
 import (
 	"errors"
 	"io"
+
 	"github.com/geodatalake/lambdas/geotiff"
 )
 
@@ -16,17 +17,16 @@ type VectorStream interface {
 }
 
 type VectorIntfc interface {
-
-	IsVector()     	bool
-	IsKML()        	bool
-	IsShape()   	bool
-	Bounds()	(*geotiff.Bounds, error)
-	GetFileLength()	uint32
+	IsVector() bool
+	IsKML() bool
+	IsShape() bool
+	Bounds() (*geotiff.Bounds, error)
+	GetFileLength() uint32
 }
 
 func IsVector(stream VectorStream) (VectorIntfc, error) {
 
-	vInterface, err := IsVectorType( stream )
+	vInterface, err := IsVectorType(stream)
 
 	if err == nil {
 		return vInterface, nil
