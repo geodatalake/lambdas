@@ -96,6 +96,51 @@ func createErrors(url, token string) {
 	scale.CreateScaleError(url, token, scale.ErrorDoc("unable_write_output", "Unable to write to output", "Unable to write to output", existing))
 }
 
+func buildNewReprojectionResponse( br scale.BoundsResult, binReadPath string ) scale.BoundsResult {
+
+
+	fmt.Println(br.Prj)
+	var oldPrj = br.Prj
+	fmt.Println( "Old projection: " + oldPrj)
+
+	oldPrj = strings.TrimSpace(oldPrj)
+	br.Prj = "EPSG 4326"
+
+	jsonToParse := br.Bounds
+	// First get offset to beginning of bounds array
+	beginIndex := strings.Index(jsonToParse, "((")
+	endIndex := strings.Index(jsonToParse, "))")
+	featureType := jsonToParse[:beginIndex]
+	substring := jsonToParse[beginIndex+2 : endIndex]
+
+	// Parse into pairs
+	latLonPairs := strings.Split(substring, ",")
+
+	var pts []geom.Point
+	for _, row := range latLonPairs {
+		elems := strings.Split(strings.TrimLeft(row, " "), " ")
+		if len(elems) >= 2 {
+			fmt.Print("Lat: " + elems[0])
+			fmt.Println("Lon: " + elems[1])
+
+			x, _ := strconv.ParseFloat(elems[0], 64)
+			y, _ := strconv.ParseFloat(elems[1], 64)
+			pts = append(pts, geom.Point{X: x, Y: y})
+		}
+	}
+	fmt.Println(oldPrj)
+	newPts,_ := proj4support.ConvertPoints(oldPrj, pts, binReadPath)
+	var newJsonPairs = ""
+	for _, pt := range newPts {
+		newJsonPairs = newJsonPairs + strconv.FormatFloat(pt.X, 'f', 6, 64) + " " + strconv.FormatFloat(pt.Y, 'f', 6, 64) + ","
+	}
+	newJsonPairs = strings.TrimSuffix(newJsonPairs, ",")
+	br.Bounds = featureType + "((" + newJsonPairs + "))"
+
+	return br
+
+}
+
 //  Errors:
 // 10 Bad number of input arguments
 // 20 Unable to open input
@@ -174,43 +219,8 @@ func main() {
 		}
 		if len(br.Bounds) > 0 && len(br.Prj) > 0 {
 
-			fmt.Println(br.Prj)
-			var oldPrj = br.Prj
-			fmt.Println( "Old projction: " + oldPrj)
+			br = buildNewReprojectionResponse( br , *binReadPath )
 
-			oldPrj = strings.TrimSpace(oldPrj)
-			br.Prj = "EPSG 4326"
-
-			jsonToParse := br.Bounds
-			// First get offset to beginning of bounds array
-			beginIndex := strings.Index(jsonToParse, "((")
-			endIndex := strings.Index(jsonToParse, "))")
-			featureType := jsonToParse[:beginIndex]
-			substring := jsonToParse[beginIndex+2 : endIndex]
-
-			// Parse into pairs
-			latLonPairs := strings.Split(substring, ",")
-
-			var pts []geom.Point
-			for _, row := range latLonPairs {
-				elems := strings.Split(strings.TrimLeft(row, " "), " ")
-				if len(elems) >= 2 {
-					fmt.Print("Lat: " + elems[0])
-					fmt.Println("Lon: " + elems[1])
-
-					x, _ := strconv.ParseFloat(elems[0], 64)
-					y, _ := strconv.ParseFloat(elems[1], 64)
-					pts = append(pts, geom.Point{X: x, Y: y})
-				}
-			}
-			fmt.Println(oldPrj)
-			newPts := proj4support.ConvertPoints(oldPrj, pts, *binReadPath)
-			var newJsonPairs = ""
-			for _, pt := range newPts {
-				newJsonPairs = newJsonPairs + strconv.FormatFloat(pt.X, 'f', 6, 64) + " " + strconv.FormatFloat(pt.Y, 'f', 6, 64) + ","
-			}
-			newJsonPairs = strings.TrimSuffix(newJsonPairs, ",")
-			br.Bounds = featureType + "((" + newJsonPairs + "))"
 		}
 		ended := time.Now().UTC()
 		outName := path.Join(outdir, fmt.Sprintf("index_request_%s.json", uuid.NewV4().String()))
