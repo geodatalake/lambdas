@@ -46,9 +46,10 @@ const (
 	rad2Deg = 180.0 / math.Pi
 )
 
-func ConvertPoints(epsg string, points []geom.Point, pathToReadFrom string) ( outpoints []geom.Point, dataGood bool ) {
+func ConvertPoints(epsg string, points []geom.Point, pathToReadFrom string) ([]geom.Point, bool ) {
 
 	var srcProjection *proj.SR
+	var outpoints []geom.Point
 
 	// Check if serialization versions of lookups exist
 	if CheckAndLoadMaps(pathToReadFrom) == false {
