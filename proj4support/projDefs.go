@@ -1,38 +1,38 @@
 package proj4support
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/base64"
 	"encoding/gob"
 	"fmt"
 	"io/ioutil"
-	"github.com/geodatalake/geom/proj"
-	"os"
 	"log"
-	"bufio"
+	"os"
 	"strings"
+	"sync"
 
+	"github.com/geodatalake/geom/proj"
 )
 
 const EPSGTITLEFILENAME = "EPSGTITLE.bin"
-const EPSGVALFILENAME  = "EPSGVAL.bin"
+const EPSGVALFILENAME = "EPSGVAL.bin"
 
 type EPSGForm struct {
 	Projection *proj.SR
 	Datum      proj.DatumExport
 }
 
-
-var defsByEPSGValue map[string] *EPSGForm
-var defsByEPSGTitle map[string] *EPSGForm
+var defsByEPSGValue map[string]*EPSGForm
+var defsByEPSGTitle map[string]*EPSGForm
 
 func addDef(name, def string) error {
 
 	if defsByEPSGValue == nil {
-		defsByEPSGValue = make(map[string] *EPSGForm)
+		defsByEPSGValue = make(map[string]*EPSGForm)
 	}
 
-	parseDef, err := proj.Parse( def)
+	parseDef, err := proj.Parse(def)
 
 	if err != nil {
 		return err
@@ -46,8 +46,7 @@ func addDef(name, def string) error {
 	var toSave = new(EPSGForm)
 
 	toSave.Projection = myProj
-	toSave.Datum = proj.DatumExposed( myProj)
-
+	toSave.Datum = proj.DatumExposed(myProj)
 
 	defsByEPSGValue[name] = toSave
 	//fmt.Println( "print addDef")
@@ -56,7 +55,7 @@ func addDef(name, def string) error {
 
 func AddDef(name, def string) error {
 
-	return addDef(name, def )
+	return addDef(name, def)
 
 }
 
@@ -73,8 +72,7 @@ func addTitleDef(name, def string) error {
 	var toSave = new(EPSGForm)
 
 	toSave.Projection = theProj
-	toSave.Datum = proj.DatumExposed( theProj)
-
+	toSave.Datum = proj.DatumExposed(theProj)
 
 	defsByEPSGTitle[name] = toSave
 
@@ -83,20 +81,20 @@ func addTitleDef(name, def string) error {
 }
 
 func AddTitleDef(name, def string) error {
-	return addTitleDef(name, def )
+	return addTitleDef(name, def)
 }
 
-func GetDefByEPSG( name string )(*proj.SR, error){
+func GetDefByEPSG(name string) (*proj.SR, error) {
 
-	fmt.Println( "GetDefByEPSG " + name)
+	fmt.Println("GetDefByEPSG " + name)
 	fmt.Println(len(defsByEPSGValue))
-	fmt.Println( defsByEPSGValue[name] )
+	fmt.Println(defsByEPSGValue[name])
 
 	var epsgForm = defsByEPSGValue[name]
 
-	proj.RestoreDatumExposed( epsgForm.Projection, epsgForm.Datum)
+	proj.RestoreDatumExposed(epsgForm.Projection, epsgForm.Datum)
 
-	if ( epsgForm != nil ) {
+	if epsgForm != nil {
 		proj.RestoreDatumExposed(epsgForm.Projection, epsgForm.Datum)
 
 		return epsgForm.Projection, nil
@@ -105,9 +103,7 @@ func GetDefByEPSG( name string )(*proj.SR, error){
 	}
 }
 
-
-
-func GetDefByTitle( name string ) (*proj.SR, error) {
+func GetDefByTitle(name string) (*proj.SR, error) {
 
 	//fmt.Println( "GetDefByTitle " + name)
 	//fmt.Println(len(defsByEPSGTitle))
@@ -118,7 +114,7 @@ func GetDefByTitle( name string ) (*proj.SR, error) {
 	//}
 	var epsgForm = defsByEPSGTitle[name]
 
-	if ( epsgForm != nil ) {
+	if epsgForm != nil {
 		proj.RestoreDatumExposed(epsgForm.Projection, epsgForm.Datum)
 
 		return epsgForm.Projection, nil
@@ -127,14 +123,14 @@ func GetDefByTitle( name string ) (*proj.SR, error) {
 	}
 }
 
-func SerializeMaps( outpath string  ) {
+func SerializeMaps(outpath string) {
 
 	var b1 = new(bytes.Buffer)
 
 	var e = gob.NewEncoder(b1)
 
 	// Encode the maps
-	var err = e.Encode( defsByEPSGValue )
+	var err = e.Encode(defsByEPSGValue)
 	if err != nil {
 		panic(err)
 	}
@@ -144,10 +140,10 @@ func SerializeMaps( outpath string  ) {
 		outModified = outpath + "/"
 	}
 
-	var encodedStr = base64.StdEncoding.EncodeToString( b1.Bytes() )
+	var encodedStr = base64.StdEncoding.EncodeToString(b1.Bytes())
 	var encodedBytes = []byte(encodedStr)
 
-	err = ioutil.WriteFile( outModified + EPSGVALFILENAME, encodedBytes, 0644)
+	err = ioutil.WriteFile(outModified+EPSGVALFILENAME, encodedBytes, 0644)
 	if err != nil {
 		panic(e)
 	}
@@ -157,118 +153,105 @@ func SerializeMaps( outpath string  ) {
 	e = gob.NewEncoder(b2)
 
 	// Encode the maps
-	err = e.Encode( defsByEPSGTitle )
+	err = e.Encode(defsByEPSGTitle)
 	if err != nil {
 		panic(err)
 	}
 
-	encodedStr = base64.StdEncoding.EncodeToString( b2.Bytes() )
+	encodedStr = base64.StdEncoding.EncodeToString(b2.Bytes())
 	encodedBytes = []byte(encodedStr)
 
-	err = ioutil.WriteFile( outModified + EPSGTITLEFILENAME, encodedBytes, 0644)
+	err = ioutil.WriteFile(outModified+EPSGTITLEFILENAME, encodedBytes, 0644)
 	if err != nil {
 		panic(e)
 	}
 
 }
 
-func CheckAndLoadMaps( pathToLoad string ) ( bool ) {
+var once sync.Once
+var mapsLoaded bool
 
-	var loaded = false
-
-	var inModified = ""
-	if len(pathToLoad) > 0 {
-		inModified = pathToLoad + "/"
-	}
-
-	fmt.Println("Passed pathToLoad" + pathToLoad)
-	fmt.Println("Passed inModified" + inModified)
-
-	var dataRead, err1 = ioutil.ReadFile(inModified + EPSGVALFILENAME)
-	if ( err1 == nil ) {
-
-		//var n = bytes.Index( dataRead, []byte{0} )
-		var s = string( dataRead[:len(dataRead)] )
-
-		var by, err = base64.StdEncoding.DecodeString(s)
-		if ( err != nil ) {
-			return loaded
+func CheckAndLoadMaps(pathToLoad string) bool {
+	onceBody := func() {
+		mapsLoaded = false
+		inModified := ""
+		if len(pathToLoad) > 0 {
+			inModified = pathToLoad + "/"
 		}
 
-		b := bytes.Buffer{}
-		b.Write(by)
+		log.Println("Passed pathToLoad" + pathToLoad)
+		log.Println("Passed inModified" + inModified)
 
-		d := gob.NewDecoder(&b)
-		err = d.Decode( &defsByEPSGValue)
+		var dataRead, err1 = ioutil.ReadFile(inModified + EPSGVALFILENAME)
+		if err1 == nil {
+			s := string(dataRead)
 
-		if err == nil {
-
-			dataRead, _ = ioutil.ReadFile(inModified + EPSGTITLEFILENAME)
-			//var n = bytes.Index(dataRead, []byte{0})
-			var s = string(dataRead[:len(dataRead)])
-
-			by, err = base64.StdEncoding.DecodeString(s)
-			if ( err != nil ) {
-				return loaded
-			}
-
-			b := bytes.Buffer{}
-			b.Write(by)
-
-			d := gob.NewDecoder(&b)
-			err = d.Decode(&defsByEPSGTitle)
-
+			by, err := base64.StdEncoding.DecodeString(s)
 			if err != nil {
-				fmt.Println("EPSG Title file not available")
-			} else {
-				loaded = true
+				log.Println("Error loading EPSGValues", err)
+				return
 			}
+
+			d := gob.NewDecoder(bytes.NewBuffer(by))
+			err = d.Decode(&defsByEPSGValue)
+
+			if err == nil {
+				dataRead, _ = ioutil.ReadFile(inModified + EPSGTITLEFILENAME)
+				s := string(dataRead)
+
+				by, err = base64.StdEncoding.DecodeString(s)
+				if err != nil {
+					log.Println("Error loading EPSGtitles", err)
+					return
+				}
+
+				d := gob.NewDecoder(bytes.NewBuffer(by))
+				err = d.Decode(&defsByEPSGTitle)
+
+				if err != nil {
+					log.Println("EPSG Title file not available")
+				} else {
+					mapsLoaded = true
+				}
+			}
+		} else {
+			log.Println("EPSG Value file not available")
 		}
-
-	} else {
-		fmt.Println("EPSG Value file not available")
 	}
-
-	return loaded
-
+	once.Do(onceBody)
+	return mapsLoaded
 }
 
-func LoadMaps() ( bool ) {
+func LoadMaps() bool {
 
 	var loaded = false
 
 	var dataRead, err1 = ioutil.ReadFile(EPSGVALFILENAME)
-	if ( err1 == nil ) {
+	if err1 == nil {
 
 		//var n = bytes.Index( dataRead, []byte{0} )
-		var s = string( dataRead[:len(dataRead)] )
+		var s = string(dataRead[:len(dataRead)])
 
 		var by, err = base64.StdEncoding.DecodeString(s)
-		if ( err != nil ) {
+		if err != nil {
 			return loaded
 		}
 
-		b := bytes.Buffer{}
-		b.Write(by)
-
-		d := gob.NewDecoder(&b)
-		err = d.Decode( &defsByEPSGValue)
+		d := gob.NewDecoder(bytes.NewBuffer(by))
+		err = d.Decode(&defsByEPSGValue)
 
 		if err == nil {
 
 			dataRead, _ = ioutil.ReadFile(EPSGTITLEFILENAME)
 			//var n = bytes.Index(dataRead, []byte{0})
-			var s = string(dataRead[:len(dataRead)])
+			var s = string(dataRead)
 
 			by, err = base64.StdEncoding.DecodeString(s)
-			if ( err != nil ) {
+			if err != nil {
 				return loaded
 			}
 
-			b := bytes.Buffer{}
-			b.Write(by)
-
-			d := gob.NewDecoder(&b)
+			d := gob.NewDecoder(bytes.NewBuffer(by))
 			err = d.Decode(&defsByEPSGTitle)
 
 			if err != nil {
@@ -286,11 +269,10 @@ func LoadMaps() ( bool ) {
 
 }
 
-func BuildMaps( inpath string, outpath string ) ( bool ) {
-
+func BuildMaps(inpath string, outpath string) bool {
 
 	var built = false
-	file, err := os.Open( inpath )
+	file, err := os.Open(inpath)
 
 	if err != nil {
 		log.Fatal(err)
@@ -321,7 +303,7 @@ func BuildMaps( inpath string, outpath string ) ( bool ) {
 			epsgCode = "EPSG:" + epsgCode
 
 			// Now get proj string
-			var projString = newLine[epsgIndex + 1:len(newLine)]
+			var projString = newLine[epsgIndex+1 : len(newLine)]
 
 			projString = strings.Replace(projString, "<>", "", -1)
 			projString = strings.TrimSpace(projString)
@@ -335,11 +317,9 @@ func BuildMaps( inpath string, outpath string ) ( bool ) {
 		}
 	}
 
-	SerializeMaps( outpath )
+	SerializeMaps(outpath)
 
 	built = true
 
-	return  built
+	return built
 }
-
-
