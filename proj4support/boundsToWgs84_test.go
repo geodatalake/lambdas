@@ -254,3 +254,50 @@ func TestConversionTitleBogusTitle (t *testing.T) {
 
 }
 
+func TestGCSDatumCode(t *testing.T) {
+
+
+	fmt.Println("Calculating Bounding box for GCS Code String")
+	s := fmt.Sprintf("GCS_WGS_84")
+	fmt.Println("Code is " + s)
+
+	var testPoints []geom.Point
+	testPoints = append(testPoints, geom.Point{ X: -88.0223336890, Y: 36.9355647985})
+	testPoints = append(testPoints, geom.Point{ X: -88.0216107159, Y: 36.8813675603})
+	testPoints = append(testPoints, geom.Point{ X: -87.9494215714, Y: 36.9361700862})
+	testPoints = append(testPoints, geom.Point{ X: -87.9487501406, Y: 36.8819716642})
+
+
+
+	var validPoints []geom.Point
+	validPoints = append(validPoints, geom.Point{ X: -88.0223336890, Y: 36.9355647985})
+	validPoints = append(validPoints, geom.Point{ X: -88.0216107159, Y: 36.8813675603})
+	validPoints = append(validPoints, geom.Point{ X: -87.9494215714, Y: 36.9361700862})
+	validPoints = append(validPoints, geom.Point{ X: -87.9487501406, Y: 36.8819716642})
+
+	outpoints := ConvertPoints( s, testPoints, "")
+
+	iCount := len(outpoints)
+
+	if outpoints == nil {
+		fmt.Println( "No Points Generated")
+	} else {
+
+		for i := 0; i < iCount; i++ {
+
+
+			var sResult1 string = fmt.Sprintf("%.10f", outpoints[i].X )
+			var sResult2 string = fmt.Sprintf("%.10f", outpoints[i].Y )
+
+			fmt.Println ( sResult1  + "," +  sResult2 )
+
+			check( validPoints[i], outpoints[i], t)
+
+
+		}
+	}
+
+
+
+}
+

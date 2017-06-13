@@ -70,7 +70,19 @@ func ConvertPoints(epsg string, points []geom.Point, pathToReadFrom string) (out
 		}
 
 		srcProjection = tempProjection
-	} else {
+	} else if strings.Contains( strings.ToUpper(epsg), "GCS") {
+		epsgcode := DefsByEPSGGCS[ epsg ]
+
+		tempProjection, err := GetDefByEPSG( epsgcode)
+
+		if err != nil {
+			fmt.Println("srcProjection is nil")
+			return nil
+		}
+
+		srcProjection = tempProjection
+	} else
+	{
 
 		fmt.Println("Assuming Title")
 		var titleStr = strings.TrimSpace(epsg)
