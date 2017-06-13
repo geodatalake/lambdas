@@ -33,8 +33,7 @@ type ReProject struct {
 }
 
 func (rp *ReProject) Convert(epsg string, bounds *geotiff.Bounds) *geotiff.Bounds {
-	epsg = strings.TrimSpace(strings.TrimPrefix(epsg, "EPSG"))
-	return geotiff.NewBoundsFromGeomPoints(ConvertPoints(epsg, bounds.AsGeomPoints(), rp.LoadPath))
+	return geotiff.NewBoundsFromGeomPoints(ConvertPoints(strings.TrimSpace(epsg), bounds.AsGeomPoints(), rp.LoadPath))
 }
 
 const (
