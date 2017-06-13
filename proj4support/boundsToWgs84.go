@@ -33,7 +33,12 @@ type ReProject struct {
 }
 
 func (rp *ReProject) Convert(epsg string, bounds *geotiff.Bounds) *geotiff.Bounds {
-	return geotiff.NewBoundsFromGeomPoints(ConvertPoints(strings.TrimSpace(epsg), bounds.AsGeomPoints(), rp.LoadPath))
+
+	if points, ok := ConvertPoints(strings.TrimSpace(epsg), bounds.AsGeomPoints(), rp.LoadPath); ok {
+		return geotiff.NewBoundsFromGeomPoints(points)
+	}
+	return bounds
+	//return geotiff.NewBoundsFromGeomPoints(ConvertPoints(strings.TrimSpace(epsg), bounds.AsGeomPoints(), rp.LoadPath))
 }
 
 const (
@@ -41,7 +46,7 @@ const (
 	rad2Deg = 180.0 / math.Pi
 )
 
-func ConvertPoints(epsg string, points []geom.Point, pathToReadFrom string) (outpoints []geom.Point) {
+func ConvertPoints(epsg string, points []geom.Point, pathToReadFrom string) ( outpoints []geom.Point, dataGood bool ) {
 
 	var srcProjection *proj.SR
 
@@ -49,7 +54,7 @@ func ConvertPoints(epsg string, points []geom.Point, pathToReadFrom string) (out
 	if CheckAndLoadMaps(pathToReadFrom) == false {
 
 		fmt.Println("Failed to load binary map data")
-		return nil
+		return nil, false
 
 	} else {
 		fmt.Println("Maps already loaded")
@@ -66,7 +71,7 @@ func ConvertPoints(epsg string, points []geom.Point, pathToReadFrom string) (out
 
 		if err != nil {
 			fmt.Println("srcProjection is nil")
-			return nil
+			return nil, false
 		}
 
 		srcProjection = tempProjection
@@ -77,7 +82,7 @@ func ConvertPoints(epsg string, points []geom.Point, pathToReadFrom string) (out
 
 		if err != nil {
 			fmt.Println("srcProjection is nil")
-			return nil
+			return nil, false
 		}
 
 		srcProjection = tempProjection
@@ -94,7 +99,7 @@ func ConvertPoints(epsg string, points []geom.Point, pathToReadFrom string) (out
 
 		if err != nil {
 			fmt.Println("srcProjection is nil")
-			return nil
+			return nil, false
 		}
 
 		srcProjection = tempProjection
@@ -105,16 +110,19 @@ func ConvertPoints(epsg string, points []geom.Point, pathToReadFrom string) (out
 
 	if err != nil {
 		fmt.Println("Fatal error tgtProjection")
+		return nil, false
 	}
 
 	if tgtProjection == nil {
 		fmt.Println("tgtProjection is nil")
+		return nil, false
 	}
 
 	fmt.Println("Units " + tgtProjection.DatumCode)
 	trans, err := srcProjection.NewTransform(tgtProjection)
 	if err != nil {
 		fmt.Println("Bad new Transform")
+		return nil, false
 	}
 
 	iCount := len(points)
@@ -125,6 +133,7 @@ func ConvertPoints(epsg string, points []geom.Point, pathToReadFrom string) (out
 
 		if err != nil {
 			fmt.Println("Error on translation")
+			return nil, false
 		} else {
 			var sResult1 string = fmt.Sprintf("%.10f", rsltx)
 			var sResult2 string = fmt.Sprintf("%.10f", rslty)
@@ -136,6 +145,6 @@ func ConvertPoints(epsg string, points []geom.Point, pathToReadFrom string) (out
 
 	}
 
-	return outpoints
+	return outpoints, true
 
 }
