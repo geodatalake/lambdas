@@ -33,6 +33,7 @@ type ReProject struct {
 }
 
 func (rp *ReProject) Convert(epsg string, bounds *geotiff.Bounds) *geotiff.Bounds {
+	epsg = strings.TrimSpace(strings.TrimPrefix(epsg, "EPSG"))
 	return geotiff.NewBoundsFromGeomPoints(ConvertPoints(epsg, bounds.AsGeomPoints(), rp.LoadPath))
 }
 
@@ -70,10 +71,10 @@ func ConvertPoints(epsg string, points []geom.Point, pathToReadFrom string) (out
 		}
 
 		srcProjection = tempProjection
-	} else if strings.Contains( strings.ToUpper(epsg), "GCS") {
-		epsgcode := DefsByEPSGGCS[ epsg ]
+	} else if strings.Contains(strings.ToUpper(epsg), "GCS") {
+		epsgcode := DefsByEPSGGCS[epsg]
 
-		tempProjection, err := GetDefByEPSG( epsgcode)
+		tempProjection, err := GetDefByEPSG(epsgcode)
 
 		if err != nil {
 			fmt.Println("srcProjection is nil")
@@ -81,8 +82,7 @@ func ConvertPoints(epsg string, points []geom.Point, pathToReadFrom string) (out
 		}
 
 		srcProjection = tempProjection
-	} else
-	{
+	} else {
 
 		fmt.Println("Assuming Title")
 		var titleStr = strings.TrimSpace(epsg)
