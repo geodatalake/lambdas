@@ -173,9 +173,10 @@ func main() {
 			os.Exit(40)
 		}
 		if len(br.Bounds) > 0 && len(br.Prj) > 0 {
+
 			fmt.Println(br.Prj)
-			var oldPrj = strings.TrimPrefix(br.Prj, "EPSG")
-			fmt.Println(oldPrj)
+			var oldPrj = br.Prj
+			fmt.Println( "Old projction: " + oldPrj)
 			oldPrj = strings.TrimSpace(oldPrj)
 			br.Prj = "EPSG 4326"
 
