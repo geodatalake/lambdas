@@ -17,6 +17,7 @@ import (
 	"github.com/geodatalake/lambdas/bucket"
 	"github.com/geodatalake/lambdas/elastichelper"
 	"github.com/geodatalake/lambdas/geoindex"
+	"github.com/geodatalake/lambdas/proj4support"
 	"github.com/geodatalake/lambdas/scale"
 	"github.com/satori/go.uuid"
 )
@@ -31,26 +32,26 @@ func array() *elastichelper.ArrayBuilder {
 
 func produceJobTypeExtract() []byte {
 	data := doc().
-		AddKV("name", "detect-geo").
+		AddKV("name", "process-geo").
 		AddKV("version", "1.0.0").
-		AddKV("title", "Detect Geo").
-		AddKV("description", "Extracts bounds and projection from geo files").
+		AddKV("title", "Process Geo").
+		AddKV("description", "Extracts WGS84 bounds from geo files").
 		AddKV("category", "testing").
 		AddKV("author_name", "Steve_Ingram").
 		AddKV("author_url", "http://www.example.com").
 		AddKV("is_operational", true).
-		AddKV("icon_code", "f279").
+		AddKV("icon_code", "f085").
 		AddKV("docker_privileged", false).
-		AddKV("docker_image", "openwhere/scale-detector:dev").
+		AddKV("docker_image", "openwhere/scale-processgeo:dev").
 		AddKV("priority", 230).
 		AddKV("max_tries", 3).
 		AddKV("cpus_required", 2.0).
-		AddKV("mem_required", 2048.0).
+		AddKV("mem_required", 1024.0).
 		AddKV("disk_out_const_required", 0.0).
 		AddKV("disk_out_mult_required", 0.0).
 		Append("interface", doc().
 			AddKV("version", "1.1").
-			AddKV("command", "/opt/detect/detector").
+			AddKV("command", "/opt/processgeo/processgeo").
 			AddKV("command_arguments", "${extract_instructions} ${job_output_dir}").
 			AddKV("shared_resources", []map[string]interface{}{}).
 			AppendArray("output_data", array().
@@ -117,6 +118,7 @@ func main() {
 	jobType := flag.Bool("jt", false, "Output job type JSON to stdout")
 	register := flag.String("register", "", "DC/OS Url, requires token")
 	token := flag.String("token", "", "DC/OS token, required for register option")
+	binReadPath := flag.String("binIn", "/opt/reproject/bins", "Path to read binary binary files from")
 	help := flag.Bool("h", false, "This help screen")
 	flag.Parse()
 
@@ -170,7 +172,6 @@ func main() {
 		switch cr.RequestType {
 		case geoindex.ExtractFileType:
 			file := cr.File.File
-			log.Println("Processing", cr.File.File)
 			bf := file.AsBucketFile()
 			data := &scale.BoundsResult{Bucket: bf.Bucket, Key: bf.Key, Region: bf.Region, LastModified: bf.LastModified}
 			if len(cr.File.Aux) > 0 {
@@ -188,7 +189,8 @@ func main() {
 				os.Exit(15)
 			}
 			stream := bf.Stream(sess)
-			resp, err := geoindex.DetectType(stream, nil)
+			proj := &proj4support.ReProject{LoadPath: *binReadPath}
+			resp, err := geoindex.DetectType(stream, proj)
 			if err != nil {
 				log.Println("Not a geo")
 			} else {

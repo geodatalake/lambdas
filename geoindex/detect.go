@@ -36,7 +36,7 @@ func getProjection(rtype geotiff.Tiff) string {
 	return "GCS_WGS_84"
 }
 
-func handleRaster(r interface{}) (*HandleReturn, error) {
+func handleRaster(r interface{}, proj Projector) (*HandleReturn, error) {
 	switch rtype := r.(type) {
 	case geotiff.Tiff:
 		if rtype.IsGeotiff() {
@@ -49,7 +49,14 @@ func handleRaster(r interface{}) (*HandleReturn, error) {
 				if err == nil {
 					lastModified = tm.UTC().Format(bucket.ISO8601FORMAT)
 				}
-				return &HandleReturn{Bounds: bounds.AsWkt(), Prj: value, Typ: "geotiff", LastModified: lastModified}, nil
+				if proj != nil {
+					if value != "GCS_WGS_84" && value != "EPSG 4326" {
+						bounds = proj.Convert(value, bounds)
+					}
+					return &HandleReturn{Bounds: bounds.AsWkt(), Prj: "EPSG 4326", Typ: "geotiff", LastModified: lastModified}, nil
+				} else {
+					return &HandleReturn{Bounds: bounds.AsWkt(), Prj: value, Typ: "geotiff", LastModified: lastModified}, nil
+				}
 			}
 		}
 	case lidar.Las:
@@ -67,9 +74,16 @@ func handleRaster(r interface{}) (*HandleReturn, error) {
 			log.Println("GeoKeys CRS")
 			prj, ok := rtype.GeotiffCrs().GetProjectedCSType()
 			if !ok {
-				return &HandleReturn{Bounds: bounds.AsWkt(), Prj: "", Typ: "lidar", LastModified: lastModified}, nil
+				return &HandleReturn{Bounds: bounds.AsWkt(), Prj: "EPSG 4326", Typ: "lidar", LastModified: lastModified}, nil
 			} else {
-				return &HandleReturn{Bounds: bounds.AsWkt(), Prj: prj, Typ: "lidar", LastModified: lastModified}, nil
+				if proj != nil {
+					if prj != "GCS_WGS_84" && prj != "EPSG 4326" {
+						bounds = proj.Convert(prj, bounds)
+					}
+					return &HandleReturn{Bounds: bounds.AsWkt(), Prj: "EPSG 4326", Typ: "lidar", LastModified: lastModified}, nil
+				} else {
+					return &HandleReturn{Bounds: bounds.AsWkt(), Prj: prj, Typ: "lidar", LastModified: lastModified}, nil
+				}
 			}
 		}
 	}
@@ -77,7 +91,7 @@ func handleRaster(r interface{}) (*HandleReturn, error) {
 	return nil, fmt.Errorf("Unknown raster type %v", r)
 }
 
-func handleVector(v vector.VectorIntfc) (*HandleReturn, error) {
+func handleVector(v vector.VectorIntfc, proj Projector) (*HandleReturn, error) {
 
 	// bounds.AsWkt()
 	// The 2nd string is Projection
@@ -93,21 +107,25 @@ func handleVector(v vector.VectorIntfc) (*HandleReturn, error) {
 		geotype = "shapefile"
 	}
 
-	projection := "EPSG:4326"
+	projection := "EPSG 4326"
 	boundswkt := vBounds.AsWkt()
 
 	return &HandleReturn{Bounds: boundswkt, Prj: projection, Typ: geotype, LastModified: ""}, nil
 }
 
-func DetectType(stream raster.RasterStream) (*HandleReturn, error) {
+type Projector interface {
+	Convert(epsg string, bounds *geotiff.Bounds) *geotiff.Bounds
+}
+
+func DetectType(stream raster.RasterStream, proj Projector) (*HandleReturn, error) {
 	if r, err := raster.IsRaster(stream); err != nil {
 		if v, err1 := vector.IsVector(stream); err1 != nil {
 			return nil, fmt.Errorf("Unknown file type %v", err1)
 		} else {
-			return handleVector(v)
+			return handleVector(v, proj)
 		}
 	} else {
-		return handleRaster(r)
+		return handleRaster(r, proj)
 	}
 }
 

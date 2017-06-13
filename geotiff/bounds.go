@@ -11,6 +11,7 @@ import (
 	"io"
 	"math"
 
+	"github.com/geodatalake/geom"
 	"github.com/golang/geo/s2"
 )
 
@@ -98,6 +99,24 @@ func (b *Bounds) AsWkt() string {
 		b.MaxX, b.MinY,
 		b.MinX, b.MinY,
 		b.MinX, b.MaxY)
+}
+
+// Returns UL, LR
+func (b *Bounds) AsGeomPoints() []geom.Point {
+	return []geom.Point{
+		geom.Point{X: b.MinX, Y: b.MaxY},
+		geom.Point{X: b.MaxX, Y: b.MinY},
+	}
+}
+
+// Expects UL, LR
+func NewBoundsFromGeomPoints(points []geom.Point) *Bounds {
+	return &Bounds{
+		MinX: points[0].X,
+		MaxY: points[0].Y,
+		MaxX: points[1].X,
+		MinY: points[1].Y,
+	}
 }
 
 func MarshalBool(writer io.Writer, value bool) {

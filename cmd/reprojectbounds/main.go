@@ -177,10 +177,10 @@ func main() {
 			fmt.Println(br.Prj)
 			var oldPrj = br.Prj
 			fmt.Println( "Old projction: " + oldPrj)
+
 			oldPrj = strings.TrimSpace(oldPrj)
 			br.Prj = "EPSG 4326"
 
-			fmt.Println(oldPrj)
 			jsonToParse := br.Bounds
 			// First get offset to beginning of bounds array
 			beginIndex := strings.Index(jsonToParse, "((")
@@ -207,9 +207,9 @@ func main() {
 			newPts := proj4support.ConvertPoints(oldPrj, pts, *binReadPath)
 			var newJsonPairs = ""
 			for _, pt := range newPts {
-				newJsonPairs = newJsonPairs + strconv.FormatFloat(pt.X, 'f', 6, 64) + " " + strconv.FormatFloat(pt.Y, 'f', 6, 64)+","
+				newJsonPairs = newJsonPairs + strconv.FormatFloat(pt.X, 'f', 6, 64) + " " + strconv.FormatFloat(pt.Y, 'f', 6, 64) + ","
 			}
-			newJsonPairs = strings.TrimSuffix(newJsonPairs, "," )
+			newJsonPairs = strings.TrimSuffix(newJsonPairs, ",")
 			br.Bounds = featureType + "((" + newJsonPairs + "))"
 		}
 		ended := time.Now().UTC()
@@ -231,7 +231,7 @@ func main() {
 				log.Println(err)
 				os.Exit(10)
 			}
-			resp, err1 := geoindex.DetectType(f)
+			resp, err1 := geoindex.DetectType(f, nil)
 			f.Close()
 			if err1 != nil {
 				log.Println(err1)
