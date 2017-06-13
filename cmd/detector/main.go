@@ -188,7 +188,7 @@ func main() {
 				os.Exit(15)
 			}
 			stream := bf.Stream(sess)
-			resp, err := geoindex.DetectType(stream)
+			resp, err := geoindex.DetectType(stream, nil)
 			if err != nil {
 				log.Println("Not a geo")
 			} else {
@@ -223,7 +223,7 @@ func main() {
 				log.Println(err)
 				os.Exit(10)
 			}
-			resp, err1 := geoindex.DetectType(f)
+			resp, err1 := geoindex.DetectType(f, nil)
 			f.Close()
 			if err1 != nil {
 				log.Println(err1)
