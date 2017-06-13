@@ -50,8 +50,10 @@ func handleRaster(r interface{}, proj Projector) (*HandleReturn, error) {
 					lastModified = tm.UTC().Format(bucket.ISO8601FORMAT)
 				}
 				if proj != nil {
-					newBounds := proj.Convert(value, bounds)
-					return &HandleReturn{Bounds: newBounds.AsWkt(), Prj: "EPSG 4326", Typ: "geotiff", LastModified: lastModified}, nil
+					if value != "GCS_WGS_84" && value != "EPSG 4326" {
+						bounds = proj.Convert(value, bounds)
+					}
+					return &HandleReturn{Bounds: bounds.AsWkt(), Prj: "EPSG 4326", Typ: "geotiff", LastModified: lastModified}, nil
 				} else {
 					return &HandleReturn{Bounds: bounds.AsWkt(), Prj: value, Typ: "geotiff", LastModified: lastModified}, nil
 				}
@@ -72,11 +74,13 @@ func handleRaster(r interface{}, proj Projector) (*HandleReturn, error) {
 			log.Println("GeoKeys CRS")
 			prj, ok := rtype.GeotiffCrs().GetProjectedCSType()
 			if !ok {
-				return &HandleReturn{Bounds: bounds.AsWkt(), Prj: "", Typ: "lidar", LastModified: lastModified}, nil
+				return &HandleReturn{Bounds: bounds.AsWkt(), Prj: "EPSG 4326", Typ: "lidar", LastModified: lastModified}, nil
 			} else {
 				if proj != nil {
-					newBounds := proj.Convert(prj, bounds)
-					return &HandleReturn{Bounds: newBounds.AsWkt(), Prj: "EPSG 4326", Typ: "lidar", LastModified: lastModified}, nil
+					if prj != "GCS_WGS_84" && prj != "EPSG 4326" {
+						bounds = proj.Convert(prj, bounds)
+					}
+					return &HandleReturn{Bounds: bounds.AsWkt(), Prj: "EPSG 4326", Typ: "lidar", LastModified: lastModified}, nil
 				} else {
 					return &HandleReturn{Bounds: bounds.AsWkt(), Prj: prj, Typ: "lidar", LastModified: lastModified}, nil
 				}
@@ -103,7 +107,7 @@ func handleVector(v vector.VectorIntfc, proj Projector) (*HandleReturn, error) {
 		geotype = "shapefile"
 	}
 
-	projection := "EPSG:4326"
+	projection := "EPSG 4326"
 	boundswkt := vBounds.AsWkt()
 
 	return &HandleReturn{Bounds: boundswkt, Prj: projection, Typ: geotype, LastModified: ""}, nil
