@@ -118,7 +118,6 @@ func main() {
 	jobType := flag.Bool("jt", false, "Output job type JSON to stdout")
 	register := flag.String("register", "", "DC/OS Url, requires token")
 	token := flag.String("token", "", "DC/OS token, required for register option")
-	binReadPath := flag.String("binIn", "/opt/reproject/bins", "Path to read binary binary files from")
 	help := flag.Bool("h", false, "This help screen")
 	flag.Parse()
 
@@ -189,7 +188,7 @@ func main() {
 				os.Exit(15)
 			}
 			stream := bf.Stream(sess)
-			proj := &proj4support.ReProject{LoadPath: *binReadPath}
+			proj := &proj4support.ReProject{}
 			resp, err := geoindex.DetectType(stream, proj)
 			if err != nil {
 				log.Println("Not a geo")
