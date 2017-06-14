@@ -29,16 +29,13 @@ func MakePoints(data []string) []geom.Point {
 }
 
 type ReProject struct {
-	LoadPath string
 }
 
 func (rp *ReProject) Convert(epsg string, bounds *geotiff.Bounds) *geotiff.Bounds {
-
-	if points, ok := ConvertPoints(strings.TrimSpace(epsg), bounds.AsGeomPoints(), rp.LoadPath); ok {
+	if points, ok := ConvertPoints(strings.TrimSpace(epsg), bounds.AsGeomPoints()); ok {
 		return geotiff.NewBoundsFromGeomPoints(points)
 	}
 	return bounds
-	//return geotiff.NewBoundsFromGeomPoints(ConvertPoints(strings.TrimSpace(epsg), bounds.AsGeomPoints(), rp.LoadPath))
 }
 
 const (
@@ -46,20 +43,9 @@ const (
 	rad2Deg = 180.0 / math.Pi
 )
 
-func ConvertPoints(epsg string, points []geom.Point, pathToReadFrom string) ([]geom.Point, bool ) {
-
+func ConvertPoints(epsg string, points []geom.Point) ([]geom.Point, bool) {
 	var srcProjection *proj.SR
 	var outpoints []geom.Point
-
-	// Check if serialization versions of lookups exist
-	if CheckAndLoadMaps(pathToReadFrom) == false {
-
-		fmt.Println("Failed to load binary map data")
-		return nil, false
-
-	} else {
-		fmt.Println("Maps already loaded")
-	}
 
 	if strings.Contains(strings.ToUpper(epsg), "EPSG") {
 
@@ -89,13 +75,11 @@ func ConvertPoints(epsg string, points []geom.Point, pathToReadFrom string) ([]g
 		srcProjection = tempProjection
 	} else {
 
-		fmt.Println("Assuming Title")
 		var titleStr = strings.TrimSpace(epsg)
 		titleStr = strings.Replace(titleStr, "/", "", -1)
 		titleStr = strings.Replace(titleStr, " ", "", -1)
 		titleStr = strings.ToUpper(titleStr)
 
-		fmt.Println("Searching with: " + titleStr)
 		tempProjection, err := GetDefByTitle(titleStr)
 
 		if err != nil {
@@ -106,7 +90,6 @@ func ConvertPoints(epsg string, points []geom.Point, pathToReadFrom string) ([]g
 		srcProjection = tempProjection
 	}
 
-	fmt.Println(srcProjection)
 	tgtProjection, err := proj.Parse("+proj=longlat +datum=WGS84 +no_defs")
 
 	if err != nil {
@@ -119,7 +102,6 @@ func ConvertPoints(epsg string, points []geom.Point, pathToReadFrom string) ([]g
 		return nil, false
 	}
 
-	fmt.Println("Units " + tgtProjection.DatumCode)
 	trans, err := srcProjection.NewTransform(tgtProjection)
 	if err != nil {
 		fmt.Println("Bad new Transform")
@@ -136,16 +118,8 @@ func ConvertPoints(epsg string, points []geom.Point, pathToReadFrom string) ([]g
 			fmt.Println("Error on translation")
 			return nil, false
 		} else {
-			var sResult1 string = fmt.Sprintf("%.10f", rsltx)
-			var sResult2 string = fmt.Sprintf("%.10f", rslty)
-
-			fmt.Println(sResult1 + "," + sResult2)
-
 			outpoints = append(outpoints, geom.Point{X: rsltx, Y: rslty})
 		}
-
 	}
-
 	return outpoints, true
-
 }

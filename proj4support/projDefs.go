@@ -3,15 +3,11 @@ package proj4support
 import (
 	"bufio"
 	"bytes"
-	"encoding/base64"
-	"encoding/gob"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/geodatalake/geom/proj"
 )
@@ -25,7 +21,6 @@ type EPSGForm struct {
 }
 
 var defsByEPSGValue map[string]*EPSGForm
-var defsByEPSGTitle map[string]*EPSGForm
 
 var DefsByEPSGGCS = map[string]string{
 	"GCS_Adindan":             "EPSG:4201",
@@ -188,34 +183,7 @@ func addDef(name, def string) error {
 }
 
 func AddDef(name, def string) error {
-
 	return addDef(name, def)
-
-}
-
-func addTitleDef(name, def string) error {
-
-	if defsByEPSGTitle == nil {
-		defsByEPSGTitle = make(map[string]*EPSGForm)
-	}
-	theProj, err := proj.Parse(def)
-	if err != nil {
-		return err
-	}
-
-	var toSave = new(EPSGForm)
-
-	toSave.Projection = theProj
-	toSave.Datum = proj.DatumExposed(theProj)
-
-	defsByEPSGTitle[name] = toSave
-
-	//fmt.Println( "print addDef")
-	return nil
-}
-
-func AddTitleDef(name, def string) error {
-	return addTitleDef(name, def)
 }
 
 func GetDefByEPSG(name string) (*proj.SR, error) {
@@ -223,218 +191,83 @@ func GetDefByEPSG(name string) (*proj.SR, error) {
 		proj.RestoreDatumExposed(epsgForm.Projection, epsgForm.Datum)
 		return epsgForm.Projection, nil
 	} else {
+		if projString, found := EpsgToProjection[name]; found {
+			if err := addDef(name, projString); err == nil {
+				return GetDefByEPSG(name)
+			}
+		}
 		return nil, fmt.Errorf("No Valid Projection found by EPSG Value: %s", name)
 	}
 }
 
 func GetDefByTitle(name string) (*proj.SR, error) {
-	if epsgForm, ok := defsByEPSGTitle[name]; ok {
-		proj.RestoreDatumExposed(epsgForm.Projection, epsgForm.Datum)
-		return epsgForm.Projection, nil
-	} else {
-		return nil, fmt.Errorf("No Valid Projection found for Title: %s", name)
+	if code, found := TitleToEpsg[name]; found {
+		return GetDefByEPSG(code)
 	}
+	return nil, fmt.Errorf("No Valid Projection found for Title: %s", name)
 }
 
-func SerializeMaps(outpath string) {
-
-	var b1 = new(bytes.Buffer)
-
-	var e = gob.NewEncoder(b1)
-
-	// Encode the maps
-	var err = e.Encode(defsByEPSGValue)
-	if err != nil {
-		panic(err)
-	}
-
-	var outModified = ""
-	if len(outpath) > 0 {
-		outModified = outpath + "/"
-	}
-
-	var encodedStr = base64.StdEncoding.EncodeToString(b1.Bytes())
-	var encodedBytes = []byte(encodedStr)
-
-	err = ioutil.WriteFile(outModified+EPSGVALFILENAME, encodedBytes, 0644)
-	if err != nil {
-		panic(e)
-	}
-
-	var b2 = new(bytes.Buffer)
-
-	e = gob.NewEncoder(b2)
-
-	// Encode the maps
-	err = e.Encode(defsByEPSGTitle)
-	if err != nil {
-		panic(err)
-	}
-
-	encodedStr = base64.StdEncoding.EncodeToString(b2.Bytes())
-	encodedBytes = []byte(encodedStr)
-
-	err = ioutil.WriteFile(outModified+EPSGTITLEFILENAME, encodedBytes, 0644)
-	if err != nil {
-		panic(e)
-	}
-
-}
-
-var once sync.Once
-var mapsLoaded bool
-
-func CheckAndLoadMaps(pathToLoad string) bool {
-	onceBody := func() {
-		start := time.Now()
-		mapsLoaded = false
-		inModified := ""
-		if len(pathToLoad) > 0 {
-			inModified = pathToLoad + "/"
-		}
-
-		log.Println("Passed pathToLoad" + pathToLoad)
-		log.Println("Passed inModified" + inModified)
-
-		var dataRead, err1 = ioutil.ReadFile(inModified + EPSGVALFILENAME)
-		if err1 == nil {
-			s := string(dataRead)
-
-			by, err := base64.StdEncoding.DecodeString(s)
-			if err != nil {
-				log.Println("Error loading EPSGValues", err)
-				return
-			}
-
-			d := gob.NewDecoder(bytes.NewBuffer(by))
-			err = d.Decode(&defsByEPSGValue)
-
-			if err == nil {
-				dataRead, _ = ioutil.ReadFile(inModified + EPSGTITLEFILENAME)
-				s := string(dataRead)
-
-				by, err = base64.StdEncoding.DecodeString(s)
-				if err != nil {
-					log.Println("Error loading EPSGtitles", err)
-					return
-				}
-
-				d := gob.NewDecoder(bytes.NewBuffer(by))
-				err = d.Decode(&defsByEPSGTitle)
-
-				if err != nil {
-					log.Println("EPSG Title file not available")
-				} else {
-					mapsLoaded = true
-				}
-			}
-		} else {
-			log.Println("EPSG Value file not available")
-		}
-		log.Println("Loading maps took", time.Now().Sub(start))
-	}
-	once.Do(onceBody)
-	return mapsLoaded
-}
-
-func LoadMaps() bool {
-
-	var loaded = false
-
-	var dataRead, err1 = ioutil.ReadFile(EPSGVALFILENAME)
-	if err1 == nil {
-
-		//var n = bytes.Index( dataRead, []byte{0} )
-		var s = string(dataRead[:len(dataRead)])
-
-		var by, err = base64.StdEncoding.DecodeString(s)
-		if err != nil {
-			return loaded
-		}
-
-		d := gob.NewDecoder(bytes.NewBuffer(by))
-		err = d.Decode(&defsByEPSGValue)
-
-		if err == nil {
-
-			dataRead, _ = ioutil.ReadFile(EPSGTITLEFILENAME)
-			//var n = bytes.Index(dataRead, []byte{0})
-			var s = string(dataRead)
-
-			by, err = base64.StdEncoding.DecodeString(s)
-			if err != nil {
-				return loaded
-			}
-
-			d := gob.NewDecoder(bytes.NewBuffer(by))
-			err = d.Decode(&defsByEPSGTitle)
-
-			if err != nil {
-				fmt.Println("EPSG Title file not available")
-			} else {
-				loaded = true
-			}
-		}
-
-	} else {
-		fmt.Println("EPSG Value file not available")
-	}
-
-	return loaded
-
-}
-
-func BuildMaps(inpath string, outpath string) bool {
-
-	var built = false
+func FormatMaps(inpath string, outpath string) {
 	file, err := os.Open(inpath)
-
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer file.Close()
-
-	var epsgTitle = ""
+	var bufEpsg bytes.Buffer
+	var bufTitle bytes.Buffer
+	allTitles := make(map[string]bool)
+	bufEpsg.WriteString("package proj4support\n\n")
+	bufEpsg.WriteString("var EpsgToProjection = map[string]string{\n")
+	bufTitle.WriteString("package proj4support\n\n")
+	bufTitle.WriteString("var TitleToEspg = map[string]string{\n")
+	var epsgTitle string
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-
 		// Look for EPSG Name First
 		newLine := scanner.Text()
 		if strings.IndexAny(newLine, "#") == 0 {
-
 			if len(strings.Trim(newLine, " ")) > 1 {
-				epsgTitle = newLine[2:len(newLine)]
-				epsgTitle = strings.Replace(epsgTitle, "/", "", -1)
-				epsgTitle = strings.TrimSpace(epsgTitle)
-				epsgTitle = strings.ToUpper(epsgTitle)
+				epsgTitle = strings.ToUpper(
+					strings.TrimSpace(
+						strings.Replace(newLine[2:], "/", "", -1)))
 			} else {
 				epsgTitle = ""
 			}
 		} else if strings.IndexAny(newLine, "<") == 0 && len(epsgTitle) > 0 {
-
 			// Handle getting the EPSG code and Proj4 String
 			epsgIndex := strings.IndexAny(newLine, ">")
 			var epsgCode = newLine[1:epsgIndex]
 			epsgCode = "EPSG:" + epsgCode
 
 			// Now get proj string
-			var projString = newLine[epsgIndex+1 : len(newLine)]
+			var projString = newLine[epsgIndex+1:]
 
-			projString = strings.Replace(projString, "<>", "", -1)
-			projString = strings.TrimSpace(projString)
+			projString = strings.TrimSpace(
+				strings.Replace(projString, "<>", "", -1))
 
 			totalString := "+title=" + epsgTitle + " " + projString
-
-			AddDef(epsgCode, totalString)
-
-			var newTitle = strings.Replace(epsgTitle, " ", "", -1)
-			AddTitleDef(newTitle, totalString)
+			bufEpsg.WriteString(fmt.Sprintf("\t\"%s\": \"%s\",\n", epsgCode, totalString))
+			newTitle := strings.Replace(epsgTitle, " ", "", -1)
+			if _, ok := allTitles[newTitle]; !ok {
+				bufTitle.WriteString(fmt.Sprintf("\t\"%s\": \"%s\",\n", newTitle, epsgCode))
+				allTitles[newTitle] = true
+			} else {
+				log.Println("Found a duplicate title", newTitle, epsgCode)
+			}
 		}
 	}
-
-	SerializeMaps(outpath)
-
-	built = true
-
-	return built
+	bufEpsg.WriteString("}")
+	if f, err0 := os.Create(path.Join(outpath, "epsg_map.go")); err0 == nil {
+		f.WriteString(bufEpsg.String())
+		f.Close()
+	} else {
+		log.Println(err0)
+	}
+	bufTitle.WriteString("}")
+	if f1, err1 := os.Create(path.Join(outpath, "title_map.go")); err1 == nil {
+		f1.WriteString(bufTitle.String())
+		f1.Close()
+	} else {
+		log.Println(err1)
+	}
 }

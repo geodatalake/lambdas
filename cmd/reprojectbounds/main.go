@@ -96,12 +96,11 @@ func createErrors(url, token string) {
 	scale.CreateScaleError(url, token, scale.ErrorDoc("unable_write_output", "Unable to write to output", "Unable to write to output", existing))
 }
 
-func buildNewReprojectionResponse( br scale.BoundsResult, binReadPath string ) scale.BoundsResult {
-
+func buildNewReprojectionResponse(br scale.BoundsResult) scale.BoundsResult {
 
 	fmt.Println(br.Prj)
 	var oldPrj = br.Prj
-	fmt.Println( "Old projection: " + oldPrj)
+	fmt.Println("Old projection: " + oldPrj)
 
 	oldPrj = strings.TrimSpace(oldPrj)
 	br.Prj = "EPSG 4326"
@@ -129,7 +128,7 @@ func buildNewReprojectionResponse( br scale.BoundsResult, binReadPath string ) s
 		}
 	}
 	fmt.Println(oldPrj)
-	newPts,_ := proj4support.ConvertPoints(oldPrj, pts, binReadPath)
+	newPts, _ := proj4support.ConvertPoints(oldPrj, pts)
 	var newJsonPairs = ""
 	for _, pt := range newPts {
 		newJsonPairs = newJsonPairs + strconv.FormatFloat(pt.X, 'f', 6, 64) + " " + strconv.FormatFloat(pt.Y, 'f', 6, 64) + ","
@@ -138,7 +137,6 @@ func buildNewReprojectionResponse( br scale.BoundsResult, binReadPath string ) s
 	br.Bounds = featureType + "((" + newJsonPairs + "))"
 
 	return br
-
 }
 
 //  Errors:
@@ -153,9 +151,8 @@ func main() {
 	register := flag.String("register", "", "DC/OS Url, requires token")
 	token := flag.String("token", "", "DC/OS token, required for register option")
 	help := flag.Bool("h", false, "This help screen")
-	binBuildSrcPath := flag.String("config", "", "Path to config files to genert binary files.")
+	binBuildSrcPath := flag.String("config", "", "Path to config file to generate go files.")
 	binBuildDestPath := flag.String("out", "", "Path to write generated binary files.")
-	binReadPath := flag.String("binIn", "/opt/reproject/bins", "Path read binary binary files.")
 
 	flag.Parse()
 
@@ -170,12 +167,11 @@ func main() {
 	}
 
 	if *binBuildSrcPath != "" {
-
 		var destDirectory = ""
 		if *binBuildDestPath != "" {
 			destDirectory = *binBuildDestPath
 		}
-		proj4support.BuildMaps(*binBuildSrcPath, destDirectory)
+		proj4support.FormatMaps(*binBuildSrcPath, destDirectory)
 		os.Exit(0)
 	}
 
@@ -192,7 +188,6 @@ func main() {
 	}
 
 	if !*dev {
-
 		started := time.Now().UTC()
 		args := flag.Args()
 		if len(args) != 2 {
@@ -218,9 +213,7 @@ func main() {
 			os.Exit(40)
 		}
 		if len(br.Bounds) > 0 && len(br.Prj) > 0 {
-
-			br = buildNewReprojectionResponse( br , *binReadPath )
-
+			br = buildNewReprojectionResponse(br)
 		}
 		ended := time.Now().UTC()
 		outName := path.Join(outdir, fmt.Sprintf("index_request_%s.json", uuid.NewV4().String()))
