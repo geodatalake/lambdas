@@ -98,6 +98,25 @@ func NewBucketFile(region, bucket, key, lastModified string, size int64) *Bucket
 		Size:         size}
 }
 
+func (bf *BucketFile) Unmarshal(m map[string]interface{}) error {
+	if r, ok := m["region"]; ok {
+		bf.Region = r.(string)
+	}
+	if b, ok := m["bucket"]; ok {
+		bf.Bucket = b.(string)
+	}
+	if k, ok := m["key"]; ok {
+		bf.Key = k.(string)
+	}
+	if s, ok := m["size"]; ok {
+		bf.Size = int64(s.(float64))
+	}
+	if lm, ok := m["lastModified"]; ok {
+		bf.LastModified = lm.(string)
+	}
+	return nil
+}
+
 func (bf *BucketFile) Paths() ([]string, string) {
 	dir, file := path.Split(bf.Key)
 	dirs := strings.Split(dir, "/")
