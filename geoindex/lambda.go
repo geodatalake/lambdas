@@ -1,0 +1,125 @@
+package geoindex
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/lambda"
+	"github.com/geodatalake/lambdas/scale"
+)
+
+func callNext(cr *ClusterRequest, name, invokeType string) (*lambda.InvokeOutput, error) {
+	if sess, err := scale.GetAwsSession(); err == nil {
+		l := lambda.New(sess, aws.NewConfig().WithRegion("us-west-2"))
+		if data, errJson := json.Marshal(cr); errJson == nil {
+			invoke := new(lambda.InvokeInput).
+				SetFunctionName(name).
+				SetInvocationType(invokeType).
+				SetPayload(data)
+			return l.Invoke(invoke)
+		} else {
+			return nil, errJson
+		}
+	} else {
+		return nil, err
+	}
+}
+
+func AwaitCallNext(cr *ClusterRequest, name string) (*lambda.InvokeOutput, error) {
+	return callNext(cr, name, lambda.InvocationTypeRequestResponse)
+}
+
+func AsyncCallNext(cr *ClusterRequest, name string) (*lambda.InvokeOutput, error) {
+	return callNext(cr, name, lambda.InvocationTypeEvent)
+}
+
+func PoolCallNexts(calls []*ClusterRequest, name string, contractFor *ContractFor) ([]*lambda.InvokeOutput, error) {
+	retval := make([]*lambda.InvokeOutput, 0, len(calls))
+	log.Println("Making", len(calls), "Lambda Invocations")
+	errc := make(chan error, len(calls))
+	done := make(chan *lambda.InvokeOutput)
+	for _, cr := range calls {
+		go func(c *ClusterRequest) {
+			if contractFor != nil {
+				contractFor.ReserveWait()
+			}
+			out, err := AsyncCallNext(c, name)
+			if err != nil {
+				errc <- err
+			} else {
+				done <- out
+			}
+		}(cr)
+	}
+	total := 0
+	timeExpired := false
+	var lastErr error
+	timeout := time.After(20 * time.Second)
+DONE:
+	for {
+		select {
+		case out := <-done:
+			retval = append(retval, out)
+			total++
+			if total >= len(calls) {
+				break DONE
+			}
+		case e := <-errc:
+			lastErr = e
+			total++
+			if total >= len(calls) {
+				break DONE
+			}
+		case <-timeout:
+			timeExpired = true
+			break DONE
+		}
+	}
+	if timeExpired {
+		return nil, fmt.Errorf("Timeout expired after %d executions", total)
+	}
+	return retval, lastErr
+}
+
+type ChunkHandler struct {
+	chunk []*ClusterRequest
+}
+
+func NewChunkHandler(sz int) *ChunkHandler {
+	if sz <= 0 {
+		sz = 10
+	}
+	return &ChunkHandler{chunk: make([]*ClusterRequest, 0, sz)}
+}
+
+func (ch *ChunkHandler) Add(cr *ClusterRequest) bool {
+	ch.chunk = append(ch.chunk, cr)
+	return ch.Full()
+}
+
+func (ch *ChunkHandler) Full() bool {
+	return len(ch.chunk) == cap(ch.chunk)
+}
+
+func (ch *ChunkHandler) Empty() bool {
+	return len(ch.chunk) == 0
+}
+
+func (ch *ChunkHandler) Clear() {
+	// to avoid memory leaks, we have to clear the slice
+	// simply resetting the pointers to zero does not free
+	// the pointers
+	for i := 0; i < len(ch.chunk); i++ {
+		ch.chunk[i] = nil
+	}
+	ch.chunk = ch.chunk[:0]
+}
+
+func (ch *ChunkHandler) Send(name string, contractFor *ContractFor) ([]*lambda.InvokeOutput, error) {
+	retval, err := PoolCallNexts(ch.chunk, name, contractFor)
+	ch.Clear()
+	return retval, err
+}

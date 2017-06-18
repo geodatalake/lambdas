@@ -21,6 +21,7 @@ dependencies:
     - go get -u github.com/aws/aws-sdk-go/service/s3
     - go get -u github.com/satori/go.uuid
     - go get -u github.com/smartystreets/go-aws-auth
+    - go get -u github.com/go-redis/redis
 
   override:
     - rm -rf ${HOME}/.go_workspace/src/github.com/geodatalake/
