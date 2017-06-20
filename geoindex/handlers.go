@@ -104,7 +104,6 @@ func (ct *ContractTracker) Reserve(name string) bool {
 		resp, _ := ct.InvokeIndexer(Reserve, name)
 		return resp.Success
 	}
-	return true
 }
 
 func (ct *ContractTracker) Release(name string) {
