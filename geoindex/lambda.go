@@ -11,6 +11,37 @@ import (
 	"github.com/geodatalake/lambdas/scale"
 )
 
+func (ct *ContractTracker) InvokeIndexer(typ IndexerRequestType, name string) (*IndexerResponse, error) {
+	if ct.provider == nil {
+		if ct.endpoint == "" {
+			return nil, fmt.Errorf("Missing monitor in environment")
+		}
+		if sess, err := scale.GetAwsSession(); err == nil {
+			ct.provider = lambda.New(sess, aws.NewConfig().WithRegion("us-west-2"))
+		} else {
+			return nil, err
+		}
+	}
+
+	req := new(IndexerRequest)
+	req.RequestType = typ
+	req.Name = name
+	b, _ := json.Marshal(req)
+	out, err := ct.provider.Invoke(new(lambda.InvokeInput).
+		SetFunctionName(ct.endpoint).
+		SetInvocationType(lambda.InvocationTypeRequestResponse).
+		SetPayload(b))
+	if err != nil {
+		log.Println("Error Invoking indexer", err)
+		return new(IndexerResponse), err
+	}
+	retval := new(IndexerResponse)
+	if jsonErr := json.Unmarshal(out.Payload, retval); jsonErr != nil {
+		return retval, jsonErr
+	}
+	return retval, nil
+}
+
 func callNext(cr *ClusterRequest, name, invokeType string) (*lambda.InvokeOutput, error) {
 	if sess, err := scale.GetAwsSession(); err == nil {
 		l := lambda.New(sess, aws.NewConfig().WithRegion("us-west-2"))
@@ -93,6 +124,10 @@ func NewChunkHandler(sz int) *ChunkHandler {
 		sz = 10
 	}
 	return &ChunkHandler{chunk: make([]*ClusterRequest, 0, sz)}
+}
+
+func (ch *ChunkHandler) String() string {
+	return fmt.Sprintf("%d requests", len(ch.chunk))
 }
 
 func (ch *ChunkHandler) Add(cr *ClusterRequest) bool {

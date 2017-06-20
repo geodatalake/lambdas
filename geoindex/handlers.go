@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/lambda"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/dustin/go-humanize"
 	"github.com/geodatalake/lambdas/bucket"
@@ -31,6 +32,7 @@ type HandlerSpec interface {
 	GetESMethod() string
 	GetESIndex() (string, string)
 	GetSqsOut() (string, string)
+	GetMonitor() string
 	GetNexts() (string, int, int, int)
 	UseLambda() bool
 	UseStats() bool
@@ -58,19 +60,34 @@ func (js *JobSpec) IsSuccess() bool {
 }
 
 type ContractTracker struct {
-	client *redis.Client
+	client   *redis.Client
+	provider *lambda.Lambda
+	endpoint string
+}
+
+func NewContractTracker(client *redis.Client, provider *lambda.Lambda, endpoint string) *ContractTracker {
+	return &ContractTracker{
+		client:   client,
+		provider: provider,
+		endpoint: endpoint,
+	}
 }
 
 func (ct *ContractTracker) Enter(name string) {
 	if ct.client != nil {
 		ct.client.Incr(name)
+	} else {
+		ct.InvokeIndexer(Enter, name)
 	}
 }
 
 func (ct *ContractTracker) Leave(name string) {
 	if ct.client != nil {
 		ct.client.Decr(name)
-		ct.client.Incr(name + "_contracts")
+		ct.Release(name)
+	} else {
+		ct.InvokeIndexer(Leave, name)
+		ct.InvokeIndexer(Release, name)
 	}
 }
 
@@ -83,17 +100,22 @@ func (ct *ContractTracker) Reserve(name string) bool {
 			ct.client.Incr(name + "_contracts")
 			return false
 		}
+	} else {
+		resp, _ := ct.InvokeIndexer(Reserve, name)
+		return resp.Success
 	}
-	return true
 }
 
-func (ct *ContractTracker) InitContracts(name string, num int) {
+func (ct *ContractTracker) Release(name string) {
 	if ct.client != nil {
-		cmd := ct.client.SetNX(name+"_contracts_init", "true", 12*time.Hour)
-		if cmd.Val() {
-			ct.client.Set(name+"_contracts", fmt.Sprintf("%d", num), 0)
-		}
+		ct.client.Incr(name + "_contracts")
+	} else {
+		ct.InvokeIndexer(Release, name)
 	}
+}
+
+func (ct *ContractTracker) Active() bool {
+	return ct.client != nil || ct.endpoint != ""
 }
 
 type ContractFor struct {
@@ -124,19 +146,17 @@ func NewContractFor(contract *ContractTracker, jobName string) *ContractFor {
 }
 
 func (cr *ClusterRequest) Handle(specs HandlerSpec) *JobSpec {
-	contract := &ContractTracker{client: specs.GetStats()}
-	_, _, _, capMax := specs.GetNexts()
+	contract := NewContractTracker(nil, nil, specs.GetMonitor())
 	js := new(JobSpec)
 	js.Start = time.Now().UTC()
 	switch cr.RequestType {
 	case ScanBucket:
-		contract.InitContracts(JGroup, capMax)
 		js.Name = JScan
 		contract.Enter(JScan)
+		log.Println("Initiating bucket scan", cr.Bucket)
 		js.Err = scanBucket(cr, specs, NewContractFor(contract, JGroup))
 		contract.Leave(JScan)
 	case GroupFiles:
-		contract.InitContracts(JProcess, capMax)
 		js.Name = JGroup
 		contract.Enter(JGroup)
 		js.Err = groupFiles(cr, specs, NewContractFor(contract, JProcess))
@@ -174,6 +194,7 @@ func scanBucket(cr *ClusterRequest, specs HandlerSpec, contractFor *ContractFor)
 	svc := s3.New(sess, aws.NewConfig().WithRegion(cr.Bucket.Region))
 	root, err2 := bucket.ListBucketStructure(cr.Bucket.Region, cr.Bucket.Bucket, svc)
 	if err2 != nil {
+		log.Println("Error listing bucket contents", err2)
 		return err2
 	}
 	q, r := specs.GetSqsOut()
@@ -192,6 +213,7 @@ func scanBucket(cr *ClusterRequest, specs HandlerSpec, contractFor *ContractFor)
 			break
 		}
 		if len(di.Keys) > 0 {
+			log.Println("Found", di.Name, "with", len(di.Keys), "files")
 			count += len(di.Keys)
 			size += di.Size
 			crOut := new(ClusterRequest)
@@ -206,8 +228,9 @@ func scanBucket(cr *ClusterRequest, specs HandlerSpec, contractFor *ContractFor)
 				}
 			} else if specs.UseLambda() {
 				if chunk.Add(crOut) {
+					log.Println("Sending", chunk)
 					chunk.Send(next, contractFor)
-					if !specs.UseStats() {
+					if !contractFor.contract.Active() {
 						time.Sleep(time.Duration(int64(rate)) * time.Second)
 					}
 				}
@@ -247,7 +270,7 @@ func groupFiles(cr *ClusterRequest, specs HandlerSpec, contractFor *ContractFor)
 			} else if specs.UseLambda() {
 				if chunk.Add(clusterRequest) {
 					chunk.Send(next, contractFor)
-					if !specs.UseStats() {
+					if !contractFor.contract.Active() {
 						time.Sleep(time.Duration(int64(rate)) * time.Second)
 					}
 				}

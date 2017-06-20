@@ -282,3 +282,50 @@ func (cr *ClusterRequest) Unmarshal(m map[string]interface{}) error {
 	}
 	return nil
 }
+
+type IndexerRequestType int
+
+const (
+	Enter IndexerRequestType = iota
+	Leave
+	Reserve
+	Release
+)
+
+type IndexerRequest struct {
+	RequestType IndexerRequestType `json:"type"`
+	Name        string             `json:"name"`
+}
+
+func (ir *IndexerRequest) Unmarshal(m map[string]interface{}) error {
+	if v, ok := m["type"]; ok {
+		switch v.(int64) {
+		case 0:
+			ir.RequestType = Enter
+		case 1:
+			ir.RequestType = Leave
+		case 2:
+			ir.RequestType = Reserve
+		case 3:
+			ir.RequestType = Release
+		default:
+			return fmt.Errorf("Unknown IndexerRequestType %v", v.(int64))
+		}
+	} else {
+		return fmt.Errorf("No type property found")
+	}
+	if n, ok := m["name"]; ok {
+		ir.Name = n.(string)
+	} else {
+		return fmt.Errorf("No name property found")
+	}
+	return nil
+}
+
+type IndexerResponse struct {
+	Success bool `json:"success"`
+}
+
+func NewIndexerResponse(s bool) *IndexerResponse {
+	return &IndexerResponse{Success: s}
+}

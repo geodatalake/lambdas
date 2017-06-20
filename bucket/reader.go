@@ -7,8 +7,10 @@ package bucket
 import (
 	"fmt"
 	"io"
+	"log"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -25,8 +27,10 @@ func mineAllObjects(bucket, path string, svc *s3.S3) ([]*s3.Object, error) {
 	if path == "/" {
 		input = &s3.ListObjectsInput{Bucket: aws.String(bucket)}
 	}
+	log.Println("Attempting to read", aws.StringValue(input.Bucket))
 	output, err := svc.ListObjects(input)
 	if err != nil {
+		log.Println("Error reading bucket", err)
 		return nil, err
 	}
 	retval := make([]*s3.Object, int(*output.MaxKeys))
@@ -140,6 +144,7 @@ func readBucket(region, dir string, svc *s3.S3) ([]*BucketFile, error) {
 			retval = append(retval, NewBucketFile(region, bucket, aws.StringValue(object.Key), dateTime, *object.Size))
 		}
 	}
+	log.Println("Read", len(retval), "BucketFiles")
 	return retval, nil
 }
 
@@ -266,11 +271,18 @@ func (bi *DirIterator) NextWithKeys() (*DirItem, bool) {
 }
 
 func (bi *DirIterator) Next() (*DirItem, bool) {
+	timeout := time.After(10 * time.Second)
 	for {
-		v, good := <-bi.ch
-		if good {
-			return v, true
-		} else {
+		select {
+		case v, good := <-bi.ch:
+			if good {
+				return v, true
+			} else {
+				log.Println("Channel is closed")
+				return nil, false
+			}
+		case <-timeout:
+			log.Println("Timeout reading next DirItem")
 			return nil, false
 		}
 	}
