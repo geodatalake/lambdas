@@ -24,11 +24,11 @@ func (tl *TraceLogger) Printf(format string, v ...interface{}) {
 	log.Printf(format+"\n", v...)
 }
 
-//func main() {
-//	os.Setenv("next", "arn:aws:lambda:us-west-2:414519249282:function:TestProcessGeo")
-//	os.Setenv("maxNext", "2")
-//	Handle(make(map[string]interface{}), nil)
-//}
+func main() {
+	os.Setenv("next", "arn:aws:lambda:us-west-2:414519249282:function:TestProcessGeo")
+	os.Setenv("maxNext", "2")
+	Handle(make(map[string]interface{}), nil)
+}
 
 type RequestParams struct {
 	Host         string
@@ -46,6 +46,7 @@ type RequestParams struct {
 	MaxNext      int
 	Rate         int
 	Cap          int
+	Monitor      string
 	Stats        string
 	StatsClient  *redis.Client
 }
@@ -76,12 +77,14 @@ func NewParams() *RequestParams {
 	params.Rate, _ = strconv.Atoi(loadFromEnv("rate", "5"))
 	params.Cap, _ = strconv.Atoi(loadFromEnv("cap", "100"))
 	params.Stats = loadFromEnv("stats", "")
+	params.Monitor = loadFromEnv("monitor", "")
 	return params
 }
 
 func (rp *RequestParams) UseLambda() bool              { return rp.Next != "" }
 func (rp *RequestParams) UseStats() bool               { return rp.Stats != "" }
 func (rp *RequestParams) GetStats() *redis.Client      { return rp.StatsClient }
+func (rp *RequestParams) GetMonitor() string           { return rp.Monitor }
 func (rp *RequestParams) EnableTraceLogging() bool     { return rp.TraceLog }
 func (rp *RequestParams) GetESAuth() string            { return rp.ESauth }
 func (rp *RequestParams) GetESMethod() string          { return rp.Method }
@@ -112,6 +115,7 @@ func (rp *RequestParams) String() string {
 	results = append(results, fmt.Sprintf("Rate: %d", rp.Rate))
 	results = append(results, fmt.Sprintf("Cap: %d", rp.Cap))
 	results = append(results, "Stats: "+rp.Stats)
+	results = append(results, "Monitor: "+rp.Monitor)
 	return strings.Join(results, ", ")
 }
 
@@ -127,23 +131,29 @@ func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 	}
 	if m, ok := evt.(map[string]interface{}); ok {
 		req := new(geoindex.ClusterRequest)
-		if params.UseLambda() {
-			if unErr := req.Unmarshal(m); unErr != nil {
+		if params.SqsIn != "" {
+			if unErr := json.Unmarshal([]byte(m["Body"].(string)), req); unErr != nil {
 				return make(map[string]string), unErr
 			}
 		} else {
-			if unErr := json.Unmarshal([]byte(m["Body"].(string)), req); unErr != nil {
+			if unErr := req.Unmarshal(m); unErr != nil {
 				return make(map[string]string), unErr
 			}
 		}
 		js := req.Handle(params)
 		if js.IsSuccess() {
-			if !params.UseLambda() {
+			if params.SqsIn != "" {
 				q, r := params.GetSqsIn()
 				if q != "" {
 					client := geoindex.NewSqsInstance().WithQueue(q).WithRegion(r)
 					if rc, ok := m["ReceiptHandle"]; ok {
-						client.Delete(rc.(string))
+						if err := client.Delete(rc.(string)); err != nil {
+							log.Println("WARN: Error deleting sqs message", rc, err)
+							return nil, err
+						}
+					} else {
+						log.Println("WARN: No ReceiptHandle found to delete")
+						return nil, fmt.Errorf("No ReceiptHandle found to delete")
 					}
 				}
 			}
