@@ -74,13 +74,22 @@ func PoolCallNexts(calls []*ClusterRequest, name string, contractFor *ContractFo
 	errc := make(chan error, len(calls))
 	done := make(chan *lambda.InvokeOutput)
 	if contractFor != nil {
+		timeout := time.After(40 * time.Second)
 		total := len(calls)
+	GIVEUP:
 		for {
 			if cnt := contractFor.ReserveManyWait(total); cnt == total {
 				break
 			} else {
 				total = total - cnt
-				log.Println("Timeout waiting to send", total, "Reserved so far", len(calls)-total)
+				log.Println("Timeout waiting to send", len(calls), "Reserved so far", len(calls)-total)
+			}
+			select {
+			case <-timeout:
+				log.Println("Giving up and sending")
+				break GIVEUP
+			default:
+				log.Println("Retry")
 			}
 		}
 	}
