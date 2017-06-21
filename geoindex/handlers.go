@@ -168,6 +168,7 @@ func (ct *ContractFor) ReserveWait() {
 				return
 			}
 		case <-timeout:
+			log.Println("Timed out waiting to send lambda")
 			return
 		}
 	}
