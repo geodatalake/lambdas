@@ -175,6 +175,18 @@ type DirRequest struct {
 	Files []*bucket.BucketFile `json:"files"`
 }
 
+func (dr *DirRequest) String() string {
+	if len(dr.Files) != 0 {
+		val := make([]string, 0, len(dr.Files))
+		for _, f := range dr.Files {
+			val = append(val, f.Key)
+		}
+		return strings.Join(val, ", ")
+	} else {
+		return "empty"
+	}
+}
+
 func (dr *DirRequest) Unmarshal(m map[string]interface{}) error {
 	if a, ok := m["files"]; ok {
 		if arr, ok := a.([]interface{}); ok {
@@ -223,7 +235,7 @@ func (cr *ClusterRequest) String() string {
 	case ExtractFileType:
 		return fmt.Sprintf("Request: ExtractFileType, %v", cr.File)
 	case GroupFiles:
-		return fmt.Sprintf("Request: GroupFiles, %v", cr.DirFiles)
+		return fmt.Sprintf("Request: GroupFiles, %s", cr.DirFiles.String())
 	default:
 		return "Unknown request type"
 	}
