@@ -11,7 +11,7 @@ import (
 	"github.com/geodatalake/lambdas/scale"
 )
 
-func (ct *ContractTracker) InvokeIndexer(typ IndexerRequestType, name string) (*IndexerResponse, error) {
+func (ct *ContractTracker) InvokeIndexer(typ IndexerRequestType, name string, num int) (*IndexerResponse, error) {
 	if ct.provider == nil {
 		if ct.endpoint == "" {
 			return nil, fmt.Errorf("Missing monitor in environment")
@@ -26,6 +26,7 @@ func (ct *ContractTracker) InvokeIndexer(typ IndexerRequestType, name string) (*
 	req := new(IndexerRequest)
 	req.RequestType = typ
 	req.Name = name
+	req.Num = num
 	b, _ := json.Marshal(req)
 	out, err := ct.provider.Invoke(new(lambda.InvokeInput).
 		SetFunctionName(ct.endpoint).
@@ -72,11 +73,19 @@ func PoolCallNexts(calls []*ClusterRequest, name string, contractFor *ContractFo
 	log.Println("Making", len(calls), "Lambda Invocations")
 	errc := make(chan error, len(calls))
 	done := make(chan *lambda.InvokeOutput)
+	if contractFor != nil {
+		total := len(calls)
+		for {
+			if cnt := contractFor.ReserveManyWait(total); cnt == total {
+				break
+			} else {
+				total = total - cnt
+				log.Println("Timeout waiting to send", total, "Reserved so far", len(calls)-total)
+			}
+		}
+	}
 	for _, cr := range calls {
 		go func(c *ClusterRequest) {
-			if contractFor != nil {
-				contractFor.ReserveWait()
-			}
 			out, err := AsyncCallNext(c, name)
 			if err != nil {
 				errc <- err
