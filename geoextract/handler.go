@@ -163,6 +163,7 @@ func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 		if js.IsSuccess() {
 			return js, nil
 		} else {
+			log.Println("Error executing job", js.Err)
 			return nil, js.Err
 		}
 	} else {
