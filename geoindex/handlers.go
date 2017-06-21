@@ -40,11 +40,9 @@ type HandlerSpec interface {
 }
 
 const (
-	JScan    = "ScanBucket"
-	JGroup   = "GroupFiles"
-	JProcess = "ProcessGeo"
-	JExtract = "ExtractFile"
-	JIndex   = "IndexElastic"
+	JScan    = "ReadBucket"
+	JGroup   = "FilterFiles"
+	JProcess = "DetectGeo"
 
 	Contracts = "_contracts"
 	Totalrun  = "_totalrun"
@@ -122,9 +120,21 @@ func (ct *ContractTracker) ReserveMany(name string, num int) int {
 				break
 			}
 		}
+		if name == JProcess {
+			log.Println("ReserveMany(", num, ") reserved =", success)
+			mySqs := NewSqsInstance().
+				WithQueue("https://sqs.us-west-2.amazonaws.com/414519249282/process-geo-test-queue").
+				WithRegion("us-west-2")
+			if _, err := mySqs.Send(fmt.Sprintf("ReserveMany(%d) reserved=%d", num, success)); err != nil {
+				log.Println("Error sending to SQS", err)
+			}
+		}
 		return success
 	} else {
 		resp, _ := ct.InvokeIndexer(Reserve, name, num)
+		if name == JProcess {
+			log.Println("ReserveMany(", num, ") reserved =", resp.Num)
+		}
 		return resp.Num
 	}
 }
@@ -291,6 +301,7 @@ func groupFiles(cr *ClusterRequest, specs HandlerSpec, contractFor *ContractFor)
 	if !specs.UseLambda() && q != "" {
 		client = NewSqsInstance().WithQueue(q).WithRegion(r)
 	}
+	log.Println("Processing", cr)
 	next, maxNext, rate, _ := specs.GetNexts()
 	chunk := NewChunkHandler(maxNext)
 	chunkCount := 0
