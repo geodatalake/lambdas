@@ -119,6 +119,18 @@ func (rp *RequestParams) String() string {
 	return strings.Join(results, ", ")
 }
 
+func (rp *RequestParams) DeleteSqs(rc string) error {
+	q, r := rp.GetSqsIn()
+	if q != "" {
+		client := geoindex.NewSqsInstance().WithQueue(q).WithRegion(r)
+		if err := client.Delete(rc); err != nil {
+			log.Println("WARN: Error deleting sqs message", rc, err)
+			return err
+		}
+	}
+	return nil
+}
+
 func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 	params := NewParams()
 	log.Println("Params", params)
@@ -135,6 +147,13 @@ func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 			if unErr := json.Unmarshal([]byte(m["Body"].(string)), req); unErr != nil {
 				return make(map[string]string), unErr
 			}
+			if rc, ok := m["ReceiptHandle"]; ok {
+				if err1 := params.DeleteSqs(rc.(string)); err1 != nil {
+					return nil, err1
+				}
+			} else {
+				return nil, fmt.Errorf("No ReceiptHandle found to delete")
+			}
 		} else {
 			if unErr := req.Unmarshal(m); unErr != nil {
 				return make(map[string]string), unErr
@@ -142,21 +161,6 @@ func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 		}
 		js := req.Handle(params)
 		if js.IsSuccess() {
-			if params.SqsIn != "" {
-				q, r := params.GetSqsIn()
-				if q != "" {
-					client := geoindex.NewSqsInstance().WithQueue(q).WithRegion(r)
-					if rc, ok := m["ReceiptHandle"]; ok {
-						if err := client.Delete(rc.(string)); err != nil {
-							log.Println("WARN: Error deleting sqs message", rc, err)
-							return nil, err
-						}
-					} else {
-						log.Println("WARN: No ReceiptHandle found to delete")
-						return nil, fmt.Errorf("No ReceiptHandle found to delete")
-					}
-				}
-			}
 			return js, nil
 		} else {
 			return nil, js.Err
