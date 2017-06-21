@@ -74,8 +74,8 @@ func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 			sb_totalrun := client.Get(geoindex.JScan + geoindex.Totalrun)
 			gf_totalrun := client.Get(geoindex.JGroup + geoindex.Totalrun)
 			pr_totalrun := client.Get(geoindex.JProcess + geoindex.Totalrun)
-
 			body := doc().
+				AddKV("pr_contracts", pr_contracts.String()).AddKV("sb_contracts", sb_contracts.String()).AddKV("gf_contracts", gf_contracts.String()).
 				AddKV("ScanBucket", fmt.Sprintf("%s of %d", sb.Val(), 10)).
 				AddKV("GroupFiles", fmt.Sprintf("%s of %d", gf.Val(), 50)).
 				AddKV("ProcessGeo", fmt.Sprintf("%s of %d", pr.Val(), 100)).
@@ -108,15 +108,24 @@ func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 				success := contract.ReserveMany(req.Name, req.Num)
 				return geoindex.NewIndexerResponse(success > 0, success), nil
 			case geoindex.Release:
+				if req.Name == geoindex.JProcess {
+					log.Println("Release(", req.Num, ")")
+					mySqs := geoindex.NewSqsInstance().
+						WithQueue("https://sqs.us-west-2.amazonaws.com/414519249282/process-geo-test-queue").
+						WithRegion("us-west-2")
+					if _, err := mySqs.Send(fmt.Sprintf("Release(%d)", req.Num)); err != nil {
+						log.Println("Error sending to SQS", err)
+					}
+				}
 				for i := req.Num; i > 0; i-- {
 					contract.Release(req.Name)
 					client.Incr(req.Name + geoindex.Totalrun)
 				}
 				return geoindex.NewIndexerResponse(true, req.Num), nil
 			case geoindex.Reset:
-				r := client.Set(geoindex.JScan, "0", 0)
-				r1 := client.Set(geoindex.JGroup, "0", 0)
-				r2 := client.Set(geoindex.JProcess, "0", 0)
+				r := client.Set(geoindex.JScan, "-1", 0)
+				r1 := client.Set(geoindex.JGroup, "-1", 0)
+				r2 := client.Set(geoindex.JProcess, "-1", 0)
 				r_contracts := client.Set(geoindex.JScan+geoindex.Contracts, "10", 0)
 				r1_contracts := client.Set(geoindex.JGroup+geoindex.Contracts, "50", 0)
 				r2_contracts := client.Set(geoindex.JProcess+geoindex.Contracts, "100", 0)
