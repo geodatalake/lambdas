@@ -76,7 +76,9 @@ func PoolCallNexts(calls []*ClusterRequest, name string, contractFor *ContractFo
 	for _, cr := range calls {
 		go func(c *ClusterRequest) {
 			if contractFor != nil {
-				contractFor.ReserveWait()
+				c.Contracted = contractFor.ReserveWait()
+			} else {
+				c.Contracted = false
 			}
 			out, err := AsyncCallNext(c, name)
 			if err != nil {
