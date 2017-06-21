@@ -117,10 +117,20 @@ type Projector interface {
 	Convert(epsg string, bounds *geotiff.Bounds) *geotiff.Bounds
 }
 
+type NotAGeo string
+
+func (s NotAGeo) Error() string {
+	return fmt.Sprintf("%v", s)
+}
+
 func DetectType(stream raster.RasterStream, proj Projector) (*HandleReturn, error) {
 	if r, err := raster.IsRaster(stream); err != nil {
+		if _, ok := err.(raster.NotaRasterFile); !ok {
+			log.Println(err)
+			return nil, err
+		}
 		if v, err1 := vector.IsVector(stream); err1 != nil {
-			return nil, fmt.Errorf("Unknown file type %v", err1)
+			return nil, NotAGeo(err1.Error())
 		} else {
 			return handleVector(v, proj)
 		}
