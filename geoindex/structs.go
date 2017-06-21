@@ -2,6 +2,7 @@ package geoindex
 
 import (
 	"fmt"
+	"log"
 	"reflect"
 	"strings"
 
@@ -226,6 +227,7 @@ type ClusterRequest struct {
 	Bucket      *BucketRequest `json:"bucket,omitempty"`
 	File        *ExtractFile   `json:"file,omitempty"`
 	DirFiles    *DirRequest    `json:"dir,omitempty"`
+	Contracted  bool           `json:"underContract"`
 }
 
 func (cr *ClusterRequest) String() string {
@@ -257,6 +259,11 @@ func (cr *ClusterRequest) Unmarshal(m map[string]interface{}) error {
 				} else {
 					return fmt.Errorf("No bucket found in request")
 				}
+				if b, ok := m["underContract"].(bool); ok {
+					cr.Contracted = b
+				} else {
+					log.Println("underContract is not a bool, it is", reflect.TypeOf(m["underContract"]).String())
+				}
 			case 1:
 				cr.RequestType = ExtractFileType
 				if f, ok := m["file"]; ok {
@@ -271,6 +278,11 @@ func (cr *ClusterRequest) Unmarshal(m map[string]interface{}) error {
 				} else {
 					return fmt.Errorf("No file found in request")
 				}
+				if b, ok := m["underContract"].(bool); ok {
+					cr.Contracted = b
+				} else {
+					log.Println("underContract is not a bool, it is", reflect.TypeOf(m["underContract"]).String())
+				}
 			case 2:
 				cr.RequestType = GroupFiles
 				if d, ok := m["dir"]; ok {
@@ -284,6 +296,11 @@ func (cr *ClusterRequest) Unmarshal(m map[string]interface{}) error {
 					}
 				} else {
 					return fmt.Errorf("No dir found in request")
+				}
+				if b, ok := m["underContract"].(bool); ok {
+					cr.Contracted = b
+				} else {
+					log.Println("underContract is not a bool, it is", reflect.TypeOf(m["underContract"]).String())
 				}
 			}
 		} else {

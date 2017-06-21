@@ -6,7 +6,7 @@ import (
 )
 
 func TestUnmarshal(t *testing.T) {
-	testString := `{"type":1,"file":{"file":{"region":"us-east-1","bucket":"test-data-lake-009","key":"sources/18STJ6251.tif","size":9137084,"lastModified":"2017-06-14T02:42:31Z"}}}`
+	testString := `{"type":1,"underContract":true,"file":{"file":{"region":"us-east-1","bucket":"test-data-lake-009","key":"sources/18STJ6251.tif","size":9137084,"lastModified":"2017-06-14T02:42:31Z"}}}`
 
 	var req map[string]interface{}
 	if err := json.Unmarshal([]byte(testString), &req); err != nil {
@@ -15,16 +15,24 @@ func TestUnmarshal(t *testing.T) {
 		cr := new(ClusterRequest)
 		if err1 := cr.Unmarshal(req); err1 != nil {
 			t.Errorf("Error unmarshling %v", err1)
+		} else {
+			if cr.Contracted != true {
+				t.Errorf("Expected underContract  to be true, it was false")
+			}
 		}
 	}
 	// test Bucket requests
-	testString = `{"type": 0,"bucket": {"bucket": "test-data-lake-010","region": "us-west-2"}}`
+	testString = `{"type": 0, "underContract": false, "bucket": {"bucket": "test-data-lake-010","region": "us-west-2"}}`
 	if err := json.Unmarshal([]byte(testString), &req); err != nil {
 		t.Errorf("Error unmarshaing JSON string %v", err)
 	} else {
 		cr := new(ClusterRequest)
 		if err1 := cr.Unmarshal(req); err1 != nil {
 			t.Errorf("Error unmarshling %v", err1)
+		} else {
+			if cr.Contracted != false {
+				t.Errorf("Expected underContract to be false, it was true")
+			}
 		}
 	}
 	// test DirRequest
