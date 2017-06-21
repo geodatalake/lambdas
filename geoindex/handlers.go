@@ -40,11 +40,12 @@ type HandlerSpec interface {
 }
 
 const (
-	JScan    = "ScanBucket"
-	JGroup   = "GroupFiles"
-	JProcess = "ProcessGeo"
-	JExtract = "ExtractFile"
-	JIndex   = "IndexElastic"
+	JScan    = "ReadBucket"
+	JGroup   = "FilterFiles"
+	JProcess = "DetectGeo"
+
+	Contracts = "_contracts"
+	Totalrun  = "_totalrun"
 )
 
 type JobSpec struct {
@@ -77,40 +78,71 @@ func (ct *ContractTracker) Enter(name string) {
 	if ct.client != nil {
 		ct.client.Incr(name)
 	} else {
-		ct.InvokeIndexer(Enter, name)
+		// TODO Send via SQS
+		//ct.InvokeIndexer(Enter, name, 1)
 	}
 }
 
 func (ct *ContractTracker) Leave(name string) {
 	if ct.client != nil {
 		ct.client.Decr(name)
-		ct.Release(name)
 	} else {
-		ct.InvokeIndexer(Leave, name)
-		ct.InvokeIndexer(Release, name)
+		// TODO Send via SQS
+		// ct.InvokeIndexer(Leave, name, 1)
+		ct.InvokeIndexer(Release, name, 1)
 	}
 }
 
 func (ct *ContractTracker) Reserve(name string) bool {
 	if ct.client != nil {
-		cmd := ct.client.Decr(name + "_contracts")
+		cmd := ct.client.Decr(name + Contracts)
 		if cmd.Val() >= 0 {
 			return true
 		} else {
-			ct.client.Incr(name + "_contracts")
+			ct.client.Incr(name + Contracts)
 			return false
 		}
 	} else {
-		resp, _ := ct.InvokeIndexer(Reserve, name)
+		resp, _ := ct.InvokeIndexer(Reserve, name, 1)
 		return resp.Success
 	}
 }
 
+func (ct *ContractTracker) ReserveMany(name string, num int) int {
+	if ct.client != nil {
+		success := 0
+		for i := num; i > 0; i-- {
+			cmd := ct.client.Decr(name + Contracts)
+			if cmd.Val() >= 0 {
+				success++
+			} else {
+				ct.client.Incr(name + Contracts)
+				break
+			}
+		}
+		if name == JProcess {
+			log.Println("ReserveMany(", num, ") reserved =", success)
+			mySqs := NewSqsInstance().
+				WithQueue("https://sqs.us-west-2.amazonaws.com/414519249282/process-geo-test-queue").
+				WithRegion("us-west-2")
+			if _, err := mySqs.Send(fmt.Sprintf("ReserveMany(%d) reserved=%d", num, success)); err != nil {
+				log.Println("Error sending to SQS", err)
+			}
+		}
+		return success
+	} else {
+		resp, _ := ct.InvokeIndexer(Reserve, name, num)
+		if name == JProcess {
+			log.Println("ReserveMany(", num, ") reserved =", resp.Num)
+		}
+		return resp.Num
+	}
+}
 func (ct *ContractTracker) Release(name string) {
 	if ct.client != nil {
-		ct.client.Incr(name + "_contracts")
+		ct.client.Incr(name + Contracts)
 	} else {
-		ct.InvokeIndexer(Release, name)
+		ct.InvokeIndexer(Release, name, 1)
 	}
 }
 
@@ -141,6 +173,29 @@ func (ct *ContractFor) ReserveWait() {
 	}
 }
 
+func (ct *ContractFor) ReserveManyWait(num int) int {
+	total := num
+	if cnt := ct.contract.ReserveMany(ct.jobName, total); cnt == total {
+		return num
+	} else {
+		total = total - cnt
+	}
+	tick := time.Tick(time.Second)
+	timeout := time.After(10 * time.Second)
+	for {
+		select {
+		case <-tick:
+			if cnt := ct.contract.ReserveMany(ct.jobName, total); cnt == total {
+				return num
+			} else {
+				total = total - cnt
+			}
+		case <-timeout:
+			return num - total
+		}
+	}
+}
+
 func NewContractFor(contract *ContractTracker, jobName string) *ContractFor {
 	return &ContractFor{contract: contract, jobName: jobName}
 }
@@ -162,18 +217,13 @@ func (cr *ClusterRequest) Handle(specs HandlerSpec) *JobSpec {
 		js.Err = groupFiles(cr, specs, NewContractFor(contract, JProcess))
 		contract.Leave(JGroup)
 	case ExtractFileType:
+		js.Name = JProcess
 		contract.Enter(JProcess)
-
-		js.Name = JExtract
-		contract.Enter(JExtract)
 		br, err := extractFile(cr, specs)
-		contract.Leave(JExtract)
 		if err != nil {
 			js.Err = err
 		} else {
-			contract.Enter(JIndex)
 			js.Err = index(br, specs)
-			contract.Leave(JIndex)
 		}
 		contract.Leave(JProcess)
 	}
@@ -251,6 +301,7 @@ func groupFiles(cr *ClusterRequest, specs HandlerSpec, contractFor *ContractFor)
 	if !specs.UseLambda() && q != "" {
 		client = NewSqsInstance().WithQueue(q).WithRegion(r)
 	}
+	log.Println("Processing", cr)
 	next, maxNext, rate, _ := specs.GetNexts()
 	chunk := NewChunkHandler(maxNext)
 	chunkCount := 0
@@ -305,7 +356,11 @@ func extractFile(cr *ClusterRequest, specs HandlerSpec) (*scale.BoundsResult, er
 	proj := &proj4support.ReProject{}
 	resp, err := DetectType(stream, proj)
 	if err != nil {
-		log.Println("Not a geo")
+		if _, ok := err.(NotAGeo); !ok {
+			return nil, err
+		} else {
+			log.Println("Not a geo")
+		}
 	} else {
 		data.Bounds = resp.Bounds
 		data.Prj = resp.Prj
