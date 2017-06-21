@@ -155,9 +155,9 @@ type ContractFor struct {
 	jobName  string
 }
 
-func (ct *ContractFor) ReserveWait() {
+func (ct *ContractFor) ReserveWait() bool {
 	if ct.contract.Reserve(ct.jobName) {
-		return
+		return true
 	}
 	tick := time.Tick(time.Second)
 	timeout := time.After(10 * time.Second)
@@ -165,11 +165,11 @@ func (ct *ContractFor) ReserveWait() {
 		select {
 		case <-tick:
 			if ct.contract.Reserve(ct.jobName) {
-				return
+				return true
 			}
 		case <-timeout:
 			log.Println("Timed out waiting to send lambda")
-			return
+			return false
 		}
 	}
 }
@@ -216,7 +216,9 @@ func (cr *ClusterRequest) Handle(specs HandlerSpec) *JobSpec {
 		js.Name = JGroup
 		contract.Enter(JGroup)
 		js.Err = groupFiles(cr, specs, NewContractFor(contract, JProcess))
-		contract.Leave(JGroup)
+		if cr.Contracted {
+			contract.Leave(JGroup)
+		}
 	case ExtractFileType:
 		js.Name = JProcess
 		contract.Enter(JProcess)
@@ -226,7 +228,9 @@ func (cr *ClusterRequest) Handle(specs HandlerSpec) *JobSpec {
 		} else {
 			js.Err = index(br, specs)
 		}
-		contract.Leave(JProcess)
+		if cr.Contracted {
+			contract.Leave(JProcess)
+		}
 	}
 	js.End = time.Now().UTC()
 	js.Duration = js.End.Sub(js.Start).String()
