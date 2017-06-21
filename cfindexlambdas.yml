@@ -1,0 +1,403 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: 'Cloud Formation for Lambda based GEO indexer.'
+Resources:
+
+  ScanBucketsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 60
+      RedrivePolicy:
+        deadLetterTargetArn: !Sub ${DeadLetterQueue.Arn}
+        maxReceiveCount: 100
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+
+  ExtractGeoWorkerRole:
+     Type: AWS::IAM::Role
+     Properties:
+       AssumeRolePolicyDocument:
+         Version: '2012-10-17'
+         Statement:
+         - Effect: Allow
+           Principal:
+             Service: lambda.amazonaws.com
+           Action:
+           - sts:AssumeRole
+       Path: '/'
+       Policies:
+       - PolicyName: logs
+         PolicyDocument:
+           Statement:
+           - Effect: Allow
+             Action:
+             - logs:CreateLogGroup
+             - logs:CreateLogStream
+             - logs:PutLogEvents
+             Resource: arn:aws:logs:*:*:*
+       - PolicyName: lambdaindexmonitorcall
+         PolicyDocument:
+           Statement:
+           - Effect: Allow
+             Action:
+             - lambda:InvokeFunction
+             Resource: "arn:aws:lambda:us-west-2:414519249282:function:MonitorIndexer"
+       - PolicyName: sqsgeoqueue
+         PolicyDocument:
+           Statement:
+           - Effect: Allow
+             Action:
+             - sqs:ReceiveMessage
+             - sqs:DeleteMessage
+             - sqs:SendMessage
+             Resource: "arn:aws:sqs:us-west-2:414519249282:process-geo-test-queue"
+       - PolicyName: s3access
+         PolicyDocument:
+           Statement:
+           - Effect: Allow
+             Action:
+               - s3:GetObjectVersion
+               - s3:DeleteObject
+               - s3:DeleteObjectVersion
+               - s3:ListBucket
+               - s3:ListBucketVersions
+               - s3:ListAllMyBuckets
+               - s3:AbortMultipartUpload
+               - s3:GetBucketAcl
+               - s3:GetBucketPolicy
+               - s3:GetObject
+               - s3:GetObjectAcl
+               - s3:ListBucket
+               - s3:ListBucketMultipartUploads
+               - s3:ListMultipartUploadParts
+               - s3:PutObject
+               - s3:PutObjectAcl
+             Resource: "arn:aws:s3:::test-data-lake-005"
+       - PolicyName: s3access2
+         PolicyDocument:
+           Statement:
+           - Effect: Allow
+             Action:
+               - s3:GetObjectVersion
+               - s3:DeleteObject
+               - s3:DeleteObjectVersion
+               - s3:ListBucket
+               - s3:ListBucketVersions
+               - s3:ListAllMyBuckets
+               - s3:AbortMultipartUpload
+               - s3:GetBucketAcl
+               - s3:GetBucketPolicy
+               - s3:GetObject
+               - s3:GetObjectAcl
+               - s3:ListBucket
+               - s3:ListBucketMultipartUploads
+               - s3:ListMultipartUploadParts
+               - s3:PutObject
+               - s3:PutObjectAcl
+             Resource: "arn:aws:s3:::test-data-lake-005/*"
+
+
+  ExtractGeoWorker621:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://data-lake-geoindexer-artifacts/handler.zip
+      Handler: handler.Handle
+      MemorySize: 128
+      Role: !Sub ${ExtractGeoWorkerRole.Arn}
+      Runtime: python2.7
+      Timeout: 60
+      Environment:
+        Variables:
+          host: "34.223.221.59"
+          port: "9200"
+          index: "sources"
+          indexType: "source"
+          method: "http"
+          tracelog: "true"
+          elasticAuth: "elastic:changeme"
+          monitor: "arn:aws:lambda:us-west-2:414519249282:function:MonitorIndexer"
+
+  GrpFilesBucketWorkerRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+            - sts:AssumeRole
+        Path: '/'
+        Policies:
+        - PolicyName: logs
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              Resource: arn:aws:logs:*:*:*
+        - PolicyName: lambdageoworkercall
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+              - lambda:InvokeFunction
+              Resource: !Sub ${ExtractGeoWorker621.Arn}
+        - PolicyName: lambdaindexmonitorcall
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+              - lambda:InvokeFunction
+              Resource: "arn:aws:lambda:us-west-2:414519249282:function:MonitorIndexer"
+        - PolicyName: sqsgeoqueue
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+              - sqs:ReceiveMessage
+              - sqs:DeleteMessage
+              - sqs:SendMessage
+              Resource: "arn:aws:sqs:us-west-2:414519249282:process-geo-test-queue"
+        - PolicyName: s3access
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+               - s3:GetObjectVersion
+               - s3:DeleteObject
+               - s3:DeleteObjectVersion
+               - s3:ListBucket
+               - s3:ListBucketVersions
+               - s3:ListAllMyBuckets
+               - s3:AbortMultipartUpload
+               - s3:GetBucketAcl
+               - s3:GetBucketPolicy
+               - s3:GetObject
+               - s3:GetObjectAcl
+               - s3:ListBucket
+               - s3:ListBucketMultipartUploads
+               - s3:ListMultipartUploadParts
+               - s3:PutObject
+               - s3:PutObjectAcl
+              Resource: "arn:aws:s3:::test-data-lake-005"
+        - PolicyName: s3access2
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+               - s3:GetObjectVersion
+               - s3:DeleteObject
+               - s3:DeleteObjectVersion
+               - s3:ListBucket
+               - s3:ListBucketVersions
+               - s3:ListAllMyBuckets
+               - s3:AbortMultipartUpload
+               - s3:GetBucketAcl
+               - s3:GetBucketPolicy
+               - s3:GetObject
+               - s3:GetObjectA
+               - s3:ListBucket
+               - s3:ListBucketMultipartUploads
+               - s3:ListMultipartUploadParts
+               - s3:PutObject
+               - s3:PutObjectAcl
+              Resource: "arn:aws:s3:::test-data-lake-005/*"
+
+  GrpFilesBucketWorker621:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://data-lake-geoindexer-artifacts/handler.zip
+      Handler: handler.Handle
+      MemorySize: 128
+      Role: !Sub ${GrpFilesBucketWorkerRole.Arn}
+      Runtime: python2.7
+      Timeout: 300
+      Environment:
+        Variables:
+          maxNext: 2
+          next: !Sub ${ExtractGeoWorker621.Arn}
+          rate: 10
+          monitor: "arn:aws:lambda:us-west-2:414519249282:function:MonitorIndexer"
+
+  ScanBucketWorkerRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+            - sts:AssumeRole
+        Path: '/'
+        Policies:
+        - PolicyName: logs
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              Resource: arn:aws:logs:*:*:*
+        - PolicyName: sqs
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+              - sqs:DeleteMessage
+              Resource: !Sub ${ScanBucketsQueue.Arn}
+        - PolicyName: sqsgeoqueue
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+              - sqs:ReceiveMessage
+              - sqs:DeleteMessage
+              - sqs:SendMessage
+              Resource: "arn:aws:sqs:us-west-2:414519249282:process-geo-test-queue"
+        - PolicyName: lambda
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+              - lambda:InvokeFunction
+              Resource: !Sub ${GrpFilesBucketWorker621.Arn}
+        - PolicyName: lambdaindexmonitorcall
+          PolicyDocument:
+             Statement:
+             - Effect: Allow
+               Action:
+               - lambda:InvokeFunction
+               Resource: "arn:aws:lambda:us-west-2:414519249282:function:MonitorIndexer"
+        - PolicyName: s3access
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+               - s3:GetObjectVersion
+               - s3:DeleteObject
+               - s3:DeleteObjectVersion
+               - s3:ListBucket
+               - s3:ListBucketVersions
+               - s3:ListAllMyBuckets
+               - s3:AbortMultipartUpload
+               - s3:GetBucketAcl
+               - s3:GetBucketPolicy
+               - s3:GetObject
+               - s3:GetObjectAcl
+               - s3:ListBucket
+               - s3:ListBucketMultipartUploads
+               - s3:ListMultipartUploadParts
+               - s3:PutObject
+               - s3:PutObjectAcl
+              Resource: "arn:aws:s3:::test-data-lake-005"
+
+        - PolicyName: s3access2
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+               - s3:GetObjectVersion
+               - s3:DeleteObject
+               - s3:DeleteObjectVersion
+               - s3:ListBucket
+               - s3:ListBucketVersions
+               - s3:ListAllMyBuckets
+               - s3:AbortMultipartUpload
+               - s3:GetBucketAcl
+               - s3:GetBucketPolicy
+               - s3:GetObject
+               - s3:GetObjectAcl
+               - s3:ListBucket
+               - s3:ListBucketMultipartUploads
+               - s3:ListMultipartUploadParts
+               - s3:PutObject
+               - s3:PutObjectAcl
+              Resource: "arn:aws:s3:::test-data-lake-005/*"
+
+  ScanBucketWorker621:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://data-lake-geoindexer-artifacts/handler.zip
+      Handler: handler.Handle
+      MemorySize: 128
+      Role: !Sub ${ScanBucketWorkerRole.Arn}
+      Runtime: python2.7
+      Timeout: 300
+      Environment:
+        Variables:
+          sqsIn: !Ref ScanBucketsQueue
+          maxNext: 2
+          next: !Sub ${GrpFilesBucketWorker621.Arn}
+          rate: 10
+          monitor: "arn:aws:lambda:us-west-2:414519249282:function:MonitorIndexer"
+
+
+  ScanBucketConsumerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: '/'
+      Policies:
+      - PolicyName: logs
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+      - PolicyName: sqs
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+            - sqs:ReceiveMessage
+            Resource: !Sub ${ScanBucketsQueue.Arn}
+      - PolicyName: lambda
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+            - lambda:InvokeFunction
+            Resource: !Sub ${ScanBucketWorker621.Arn}
+
+  ScanBucketConsumer:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: s3://data-lake-geoindexer-artifacts/consumer.zip
+      Handler: index.handler
+      MemorySize: 128
+      Role: !Sub ${ScanBucketConsumerRole.Arn}
+      Runtime: nodejs6.10
+      Timeout: 60
+      Environment:
+        Variables:
+          queue: !Ref ScanBucketsQueue
+          WORKER_LAMBDA_NAME: !Ref ScanBucketWorker621
+      Events:
+        Timer:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 minute)
+
+
+
+
+
+
+
