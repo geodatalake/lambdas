@@ -290,26 +290,32 @@ const (
 	Leave
 	Reserve
 	Release
+	Reset
 )
 
 type IndexerRequest struct {
 	RequestType IndexerRequestType `json:"type"`
 	Name        string             `json:"name"`
+	Num         int                `json:"num"`
 }
 
 func (ir *IndexerRequest) Unmarshal(m map[string]interface{}) error {
 	if v, ok := m["type"]; ok {
-		switch v.(int64) {
-		case 0:
-			ir.RequestType = Enter
-		case 1:
-			ir.RequestType = Leave
-		case 2:
-			ir.RequestType = Reserve
-		case 3:
-			ir.RequestType = Release
-		default:
-			return fmt.Errorf("Unknown IndexerRequestType %v", v.(int64))
+		if val, good := v.(float64); good {
+			switch int64(val) {
+			case 0:
+				ir.RequestType = Enter
+			case 1:
+				ir.RequestType = Leave
+			case 2:
+				ir.RequestType = Reserve
+			case 3:
+				ir.RequestType = Release
+			case 4:
+				ir.RequestType = Reset
+			default:
+				return fmt.Errorf("Unknown IndexerRequestType %v", int64(val))
+			}
 		}
 	} else {
 		return fmt.Errorf("No type property found")
@@ -319,13 +325,23 @@ func (ir *IndexerRequest) Unmarshal(m map[string]interface{}) error {
 	} else {
 		return fmt.Errorf("No name property found")
 	}
+	if a, ok := m["num"]; ok {
+		if num, good := a.(float64); good {
+			ir.Num = int(num)
+		} else {
+			return fmt.Errorf("Num is not a float64, it is %s", reflect.TypeOf(a).String())
+		}
+	} else {
+		return fmt.Errorf("No num property found")
+	}
 	return nil
 }
 
 type IndexerResponse struct {
 	Success bool `json:"success"`
+	Num     int  `json:"num"`
 }
 
-func NewIndexerResponse(s bool) *IndexerResponse {
-	return &IndexerResponse{Success: s}
+func NewIndexerResponse(s bool, num int) *IndexerResponse {
+	return &IndexerResponse{Success: s, Num: num}
 }
