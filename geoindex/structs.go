@@ -328,6 +328,23 @@ type IndexerRequest struct {
 	Num         int                `json:"num"`
 }
 
+func (ir *IndexerRequest) String() string {
+	rtype := "Unknown"
+	switch ir.RequestType {
+	case Enter:
+		rtype = "Enter"
+	case Leave:
+		rtype = "Leave"
+	case Reserve:
+		rtype = "Reserve"
+	case Release:
+		rtype = "Release"
+	case Reset:
+		rtype = "Reset"
+	}
+	return fmt.Sprintf("%s: Name: %s, Num: %d", rtype, ir.Name, ir.Num)
+}
+
 func (ir *IndexerRequest) Unmarshal(m map[string]interface{}) error {
 	if v, ok := m["type"]; ok {
 		if val, good := v.(float64); good {
