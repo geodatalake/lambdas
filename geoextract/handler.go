@@ -17,6 +17,8 @@ import (
 	"github.com/go-redis/redis"
 )
 
+var version = "0.11"
+
 type TraceLogger struct {
 }
 
@@ -133,6 +135,7 @@ func (rp *RequestParams) DeleteSqs(rc string) error {
 
 func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 	params := NewParams()
+	log.Println("Version", version)
 	log.Println("Params", params)
 	if params.UseStats() {
 		params.StatsClient = redis.NewClient(&redis.Options{

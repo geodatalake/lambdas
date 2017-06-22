@@ -2,13 +2,10 @@ package main
 
 import (
 	"encoding/json"
-	"reflect"
-	//	"encoding/json"
 	"fmt"
 	"log"
 	"os"
-	//	"strconv"
-	//	"strings"
+	"reflect"
 
 	"github.com/eawsy/aws-lambda-go-core/service/lambda/runtime"
 	"github.com/geodatalake/lambdas/elastichelper"
@@ -49,8 +46,11 @@ func array() *elastichelper.ArrayBuilder {
 	return elastichelper.StartArray()
 }
 
+var version = "0.11"
+
 func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 	params := NewParams()
+	log.Println("Version", version)
 	log.Println("Params:", params)
 	var client *redis.Client
 	if params.Stats != "" {
@@ -61,10 +61,12 @@ func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 		})
 		defer client.Close()
 	} else {
+		log.Println("No stats environment variable found")
 		return "", fmt.Errorf("No stats environment variable found")
 	}
 	if m, ok := evt.(map[string]interface{}); ok {
 		if m["httpMethod"] == "GET" {
+			log.Println("Answering GET request")
 			sb := client.Get(geoindex.JScan)
 			gf := client.Get(geoindex.JGroup)
 			pr := client.Get(geoindex.JProcess)
@@ -76,6 +78,7 @@ func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 			pr_totalrun := client.Get(geoindex.JProcess + geoindex.Totalrun)
 			body := doc().
 				AddKV("pr_contracts", pr_contracts.String()).AddKV("sb_contracts", sb_contracts.String()).AddKV("gf_contracts", gf_contracts.String()).
+				AddKV("Version", version).
 				AddKV("ScanBucket", fmt.Sprintf("%s of %d", sb.Val(), 10)).
 				AddKV("GroupFiles", fmt.Sprintf("%s of %d", gf.Val(), 50)).
 				AddKV("ProcessGeo", fmt.Sprintf("%s of %d", pr.Val(), 100)).
@@ -95,6 +98,8 @@ func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 			if err := req.Unmarshal(m); err != nil {
 				log.Println("Error unmarshalling request", err)
 				return nil, err
+			} else {
+				log.Println("Processing", req)
 			}
 			contract := geoindex.NewContractTracker(client, nil, "")
 			switch req.RequestType {
@@ -113,7 +118,7 @@ func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 					mySqs := geoindex.NewSqsInstance().
 						WithQueue("https://sqs.us-west-2.amazonaws.com/414519249282/process-geo-test-queue").
 						WithRegion("us-west-2")
-					if _, err := mySqs.Send(fmt.Sprintf("Release(%d)", req.Num)); err != nil {
+					if _, err := mySqs.SendAsJson(fmt.Sprintf("Release(%d)", req.Num)); err != nil {
 						log.Println("Error sending to SQS", err)
 					}
 				}
@@ -135,6 +140,7 @@ func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 				log.Println("initialized values:", r, r1, r2, r_contracts, r1_contracts, r2_contracts, r_totals, r1_totals, r2_totals)
 				return geoindex.NewIndexerResponse(true, 0), nil
 			}
+			log.Println("Unhandled request")
 			return geoindex.NewIndexerResponse(false, 0), nil
 		}
 	} else {
