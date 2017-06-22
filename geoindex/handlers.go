@@ -125,7 +125,7 @@ func (ct *ContractTracker) ReserveMany(name string, num int) int {
 			mySqs := NewSqsInstance().
 				WithQueue("https://sqs.us-west-2.amazonaws.com/414519249282/process-geo-test-queue").
 				WithRegion("us-west-2")
-			if _, err := mySqs.Send(fmt.Sprintf("ReserveMany(%d) reserved=%d", num, success)); err != nil {
+			if _, err := mySqs.SendAsJson(fmt.Sprintf("ReserveMany(%d) reserved=%d", num, success)); err != nil {
 				log.Println("Error sending to SQS", err)
 			}
 		}
