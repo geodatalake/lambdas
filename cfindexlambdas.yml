@@ -51,7 +51,9 @@ Resources:
            - Effect: Allow
              Action:
              - lambda:InvokeFunction
-             Resource: "arn:aws:lambda:us-west-2:414519249282:function:MonitorIndexer"
+             Resource:
+                - "arn:aws:lambda:us-west-2:414519249282:function:MonitorIndexer"
+                - !Sub ${ExtractGeoWorker621.Arn}
        - PolicyName: sqsgeoqueue
          PolicyDocument:
            Statement:
@@ -165,6 +167,7 @@ Resources:
                Resource:
                 - "arn:aws:lambda:us-west-2:414519249282:function:MonitorIndexer"
                 - !Sub ${ExtractGeoWorker621.Arn}
+
         - PolicyName: s3access
           PolicyDocument:
             Statement:
