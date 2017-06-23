@@ -73,18 +73,20 @@ func (cr *ClusterRequest) Handle(specs HandlerSpec, ctx *runtime.Context) *JobSp
 		js.Name = JScan
 		log.Println("Initiating bucket scan", cr.Bucket)
 		cq := new(ClusterQueue)
-		cq.Items, js.Err = scanBucket(cr, specs)
+		items, err := scanBucket(cr, specs)
+		js.Err = err
 		if js.IsSuccess() {
 			next, maxNext, _, _ := specs.GetNexts()
 			cq.MaxNext = maxNext
 			cq.Next = next
 			cq.StartTime = time.Now().UTC().String()
 			cq.ParentId = cr.Bucket.Bucket + "_" + cq.StartTime
-			cq.Items = js.Items
+			cq.Items = items
 			masterCr := new(ClusterRequest)
 			masterCr.RequestType = ClusterMaster
 			masterCr.Master = cq
 			masterCr.Id = cq.ParentId
+			log.Println("Sending", len(items), "jobs to master")
 			if _, err := AsyncCallNext(masterCr, next); err != nil {
 				js.Err = err
 			}
