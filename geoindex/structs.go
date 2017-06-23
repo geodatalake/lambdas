@@ -420,12 +420,14 @@ const (
 	Enter IndexerRequestType = iota
 	Leave
 	Reset
+	JobComplete
 )
 
 type IndexerRequest struct {
 	RequestType IndexerRequestType `json:"type"`
 	Name        string             `json:"name"`
 	Num         int                `json:"num"`
+	Duration    time.Duration      `json:"duration"`
 }
 
 func (ir *IndexerRequest) String() string {
@@ -437,8 +439,10 @@ func (ir *IndexerRequest) String() string {
 		rtype = "Leave"
 	case Reset:
 		rtype = "Reset"
+	case JobComplete:
+		rtype = "JobComplete"
 	}
-	return fmt.Sprintf("%s: Name: %s, Num: %d", rtype, ir.Name, ir.Num)
+	return fmt.Sprintf("%s: Name: %s, Num: %d, Duration: %s", rtype, ir.Name, ir.Num, ir.Duration.String())
 }
 
 func (ir *IndexerRequest) Unmarshal(m map[string]interface{}) error {
@@ -471,6 +475,11 @@ func (ir *IndexerRequest) Unmarshal(m map[string]interface{}) error {
 		}
 	} else {
 		return fmt.Errorf("No num property found")
+	}
+	if d, ok := m["duration"]; ok {
+		if dur, good := d.(float64); good {
+			ir.Duration = time.Duration(int64(dur))
+		}
 	}
 	return nil
 }
