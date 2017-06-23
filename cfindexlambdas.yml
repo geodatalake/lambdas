@@ -52,8 +52,7 @@ Resources:
              Action:
              - lambda:InvokeFunction
              Resource:
-                - "arn:aws:lambda:us-west-2:414519249282:function:MonitorIndexer"
-                - !Sub ${ExtractGeoWorker621.Arn}
+               - "arn:aws:lambda:us-west-2:414519249282:function:MonitorIndexer"
        - PolicyName: sqsgeoqueue
          PolicyDocument:
            Statement:
