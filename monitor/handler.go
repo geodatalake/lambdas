@@ -13,7 +13,7 @@ import (
 	"github.com/go-redis/redis"
 )
 
-var version = "0.24"
+var version = "0.25"
 
 func main() {}
 
