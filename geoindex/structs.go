@@ -2,9 +2,9 @@ package geoindex
 
 import (
 	"fmt"
-	"log"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/geodatalake/lambdas/bucket"
 )
@@ -220,6 +220,8 @@ const (
 	ScanBucket DcosRequest = iota
 	ExtractFileType
 	GroupFiles
+	MineSQS
+	ClusterMaster
 )
 
 type ClusterRequest struct {
@@ -227,23 +229,31 @@ type ClusterRequest struct {
 	Bucket      *BucketRequest `json:"bucket,omitempty"`
 	File        *ExtractFile   `json:"file,omitempty"`
 	DirFiles    *DirRequest    `json:"dir,omitempty"`
-	Contracted  bool           `json:"underContract"`
+	Master      *ClusterQueue  `json:"master,omitempty"`
+	Id          string         `json:"id"`
 }
 
 func (cr *ClusterRequest) String() string {
 	switch cr.RequestType {
 	case ScanBucket:
-		return fmt.Sprintf("Request: ScanBucket, Bucket: %+v", *cr.Bucket)
+		return fmt.Sprintf("Request: ScanBucket, Id: %s, Bucket: %+v", cr.Id, *cr.Bucket)
 	case ExtractFileType:
-		return fmt.Sprintf("Request: ExtractFileType, %v", cr.File)
+		return fmt.Sprintf("Request: ExtractFileType, Id: %s, %v", cr.Id, cr.File)
 	case GroupFiles:
-		return fmt.Sprintf("Request: GroupFiles, %s", cr.DirFiles.String())
+		return fmt.Sprintf("Request: GroupFiles, Id: %s, %s", cr.Id, cr.DirFiles.String())
+	case MineSQS:
+		return fmt.Sprintf("Request: MineSQS, Id: %s, %+v", cr.Id, *cr.Master)
+	case ClusterMaster:
+		return fmt.Sprintf("Request: ClusterMaster, Id: %s, %+v", cr.Id, *cr.Master)
 	default:
 		return "Unknown request type"
 	}
 }
 
 func (cr *ClusterRequest) Unmarshal(m map[string]interface{}) error {
+	if id, ok := m["id"]; ok {
+		cr.Id = id.(string)
+	}
 	if rtype, ok := m["type"]; ok {
 		if val, good := rtype.(float64); good {
 			switch int64(val) {
@@ -259,11 +269,6 @@ func (cr *ClusterRequest) Unmarshal(m map[string]interface{}) error {
 				} else {
 					return fmt.Errorf("No bucket found in request")
 				}
-				if b, ok := m["underContract"].(bool); ok {
-					cr.Contracted = b
-				} else {
-					log.Println("underContract is not a bool, it is", reflect.TypeOf(m["underContract"]).String())
-				}
 			case 1:
 				cr.RequestType = ExtractFileType
 				if f, ok := m["file"]; ok {
@@ -277,11 +282,6 @@ func (cr *ClusterRequest) Unmarshal(m map[string]interface{}) error {
 					}
 				} else {
 					return fmt.Errorf("No file found in request")
-				}
-				if b, ok := m["underContract"].(bool); ok {
-					cr.Contracted = b
-				} else {
-					log.Println("underContract is not a bool, it is", reflect.TypeOf(m["underContract"]).String())
 				}
 			case 2:
 				cr.RequestType = GroupFiles
@@ -297,10 +297,25 @@ func (cr *ClusterRequest) Unmarshal(m map[string]interface{}) error {
 				} else {
 					return fmt.Errorf("No dir found in request")
 				}
-				if b, ok := m["underContract"].(bool); ok {
-					cr.Contracted = b
-				} else {
-					log.Println("underContract is not a bool, it is", reflect.TypeOf(m["underContract"]).String())
+			case 3:
+				cr.RequestType = MineSQS
+				if master, ok := m["master"]; ok {
+					if data, good := master.(map[string]interface{}); good {
+						cr.Master = new(ClusterQueue)
+						if err := cr.Master.Unmarshal(data); err != nil {
+							return err
+						}
+					}
+				}
+			case 4:
+				cr.RequestType = ClusterMaster
+				if master, ok := m["master"]; ok {
+					if data, good := master.(map[string]interface{}); good {
+						cr.Master = new(ClusterQueue)
+						if err := cr.Master.Unmarshal(data); err != nil {
+							return err
+						}
+					}
 				}
 			}
 		} else {
@@ -312,13 +327,98 @@ func (cr *ClusterRequest) Unmarshal(m map[string]interface{}) error {
 	return nil
 }
 
+type ClusterResponse struct {
+	Item     *ClusterRequest `json:"item"`
+	Timeout  time.Duration   `json:"timeout"`
+	ParentId string          `json:"parentId"`
+}
+
+func NewClusterResponse(cr *ClusterRequest, id string) *ClusterResponse {
+	return &ClusterResponse{Item: cr, ParentId: id, Timeout: time.Minute}
+}
+
+func (cr *ClusterResponse) Unmarshal(m map[string]interface{}) error {
+	if to, ok := m["timeout"]; ok {
+		if nto, good := to.(float64); good {
+			cr.Timeout = time.Duration(int64(nto))
+		}
+	} else {
+		cr.Timeout = time.Minute
+	}
+	if pi, ok := m["parentId"]; ok {
+		cr.ParentId = pi.(string)
+	}
+	if item, ok := m["item"]; ok {
+		if cItem, good := item.(map[string]interface{}); good {
+			cr.Item = new(ClusterRequest)
+			cr.Item.Unmarshal(cItem)
+		} else {
+			return fmt.Errorf("item is not a map[string]interface{}, it is a %s", reflect.TypeOf(item).String())
+		}
+	} else {
+		return fmt.Errorf("No item found")
+	}
+	return nil
+}
+
+type ClusterQueue struct {
+	Items     []*ClusterResponse `json:"items"`
+	Next      string             `json:"next"`
+	MaxNext   int                `json:"maxNext"`
+	StartTime string             `json:"startTime"`
+	ParentId  string             `json:"parentId"`
+}
+
+func (cq *ClusterQueue) CloneWith(items []*ClusterResponse) *ClusterQueue {
+	c := new(ClusterQueue)
+	c.Next = cq.Next
+	c.MaxNext = cq.MaxNext
+	c.StartTime = cq.StartTime
+	c.ParentId = cq.ParentId
+	c.Items = items
+	return c
+}
+
+func (cq *ClusterQueue) Unmarshal(m map[string]interface{}) error {
+	if a, ok := m["items"]; ok {
+		if all, good := a.([]interface{}); good {
+			cq.Items = make([]*ClusterResponse, 0, len(all))
+			for _, item := range all {
+				cr := new(ClusterResponse)
+				if err := cr.Unmarshal(item.(map[string]interface{})); err != nil {
+					return err
+				}
+				cq.Items = append(cq.Items, cr)
+			}
+		}
+	} else {
+		return fmt.Errorf("No items found")
+	}
+	if next, ok := m["next"]; ok {
+		cq.Next = next.(string)
+	} else {
+		return fmt.Errorf("next not found")
+	}
+	if st, ok := m["startTime"]; ok {
+		cq.StartTime = st.(string)
+	} else {
+		return fmt.Errorf("startTime not found")
+	}
+	if mn, ok := m["maxNext"]; ok {
+		if mx, good := mn.(float64); good {
+			cq.MaxNext = int(mx)
+		}
+	} else {
+		return fmt.Errorf("maxNext not found")
+	}
+	return nil
+}
+
 type IndexerRequestType int
 
 const (
 	Enter IndexerRequestType = iota
 	Leave
-	Reserve
-	Release
 	Reset
 )
 
@@ -335,10 +435,6 @@ func (ir *IndexerRequest) String() string {
 		rtype = "Enter"
 	case Leave:
 		rtype = "Leave"
-	case Reserve:
-		rtype = "Reserve"
-	case Release:
-		rtype = "Release"
 	case Reset:
 		rtype = "Reset"
 	}
@@ -354,10 +450,6 @@ func (ir *IndexerRequest) Unmarshal(m map[string]interface{}) error {
 			case 1:
 				ir.RequestType = Leave
 			case 2:
-				ir.RequestType = Reserve
-			case 3:
-				ir.RequestType = Release
-			case 4:
 				ir.RequestType = Reset
 			default:
 				return fmt.Errorf("Unknown IndexerRequestType %v", int64(val))

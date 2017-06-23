@@ -2,7 +2,9 @@ package geoindex
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
+	"time"
 )
 
 func TestUnmarshal(t *testing.T) {
@@ -16,8 +18,8 @@ func TestUnmarshal(t *testing.T) {
 		if err1 := cr.Unmarshal(req); err1 != nil {
 			t.Errorf("Error unmarshling %v", err1)
 		} else {
-			if cr.Contracted != true {
-				t.Errorf("Expected underContract  to be true, it was false")
+			if cr.RequestType != ExtractFileType {
+				t.Errorf("Expected ExtractFileType, but was %v", cr.RequestType)
 			}
 		}
 	}
@@ -30,8 +32,8 @@ func TestUnmarshal(t *testing.T) {
 		if err1 := cr.Unmarshal(req); err1 != nil {
 			t.Errorf("Error unmarshling %v", err1)
 		} else {
-			if cr.Contracted != false {
-				t.Errorf("Expected underContract to be false, it was true")
+			if cr.RequestType != ScanBucket {
+				t.Errorf("Expected ScanBucket, but was %v", cr.RequestType)
 			}
 		}
 	}
@@ -49,6 +51,52 @@ func TestUnmarshal(t *testing.T) {
 			} else {
 				if len(cr.DirFiles.Files) != 695 {
 					t.Errorf("Expected 695 Dir Files, received %d", len(cr.DirFiles.Files))
+				}
+			}
+		}
+	}
+
+	// Test ClusterMaster request
+	cq := new(ClusterQueue)
+	cq.Next = "next"
+	cq.MaxNext = 30
+	cq.ParentId = "id"
+	cq.StartTime = time.Now().UTC().String()
+	cq.Items = make([]*ClusterResponse, 0, 2)
+	for i := 0; i < 2; i++ {
+		cr := new(ClusterRequest)
+		cr.RequestType = ExtractFileType
+		cr.File = new(ExtractFile)
+		cr.File.File = new(BucketFileInfo)
+		cr.File.File.Bucket = "bucket"
+		cr.File.File.Key = "Key" + fmt.Sprintf("%d", index)
+		cr.File.File.Region = "us-east-1"
+		cq.Items = append(cq.Items, NewClusterResponse(cr, "id"))
+	}
+	test := new(ClusterRequest)
+	test.RequestType = ClusterMaster
+	test.Master = cq
+
+	b, err := json.Marshal(test)
+	if err != nil {
+		t.Errorf("Error marshaling test: %v", err)
+	} else {
+		if err := json.Unmarshal(b, &req); err != nil {
+			t.Errorf("Error unmarshaing JSON string %v", err)
+		} else {
+			cr := new(ClusterRequest)
+			if err1 := cr.Unmarshal(req); err1 != nil {
+				t.Errorf("Error unmarshling %v", err1)
+			} else {
+				if cr.RequestType != ClusterMaster {
+					t.Errorf("Expected ClusterMaster request, but was %v", cr.RequestType)
+				}
+				if cr.Master == nil {
+					t.Errorf("Master is nil")
+				} else {
+					if len(cr.Master.Items) != 2 {
+						t.Errorf("Expected 2 items, received %d", len(cr.Master.Items))
+					}
 				}
 			}
 		}
