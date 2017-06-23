@@ -97,6 +97,9 @@ func TestUnmarshal(t *testing.T) {
 					if len(cr.Master.Items) != 2 {
 						t.Errorf("Expected 2 items, received %d", len(cr.Master.Items))
 					}
+					if cr.Master.ParentId != "id" {
+						t.Errorf("Expected ParentId to be id, it was %s", cr.Master.ParentId)
+					}
 				}
 			}
 		}

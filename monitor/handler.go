@@ -13,6 +13,8 @@ import (
 	"github.com/go-redis/redis"
 )
 
+var version = "0.25"
+
 func main() {}
 
 type RequestParams struct {
@@ -46,8 +48,6 @@ func array() *elastichelper.ArrayBuilder {
 	return elastichelper.StartArray()
 }
 
-var version = "0.20"
-
 func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 	params := NewParams()
 	log.Println("Version", version)
@@ -80,8 +80,18 @@ func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 				AddKV("ProcessGeo", pr.Val()).
 				AddKV("ScanBucket_Totalrun", sb_totalrun.Val()).
 				AddKV("GroupFiles_Totalrun", gf_totalrun.Val()).
-				AddKV("ProcessGeo_Totalrun", pr_totalrun.Val()).Build()
-			b, _ := json.Marshal(body)
+				AddKV("ProcessGeo_Totalrun", pr_totalrun.Val())
+			llen := client.LLen("CompletedJobs")
+			if llen.Val() > 0 {
+				jobs := client.LRange("CompletedJobs", 0, 5)
+				arr := array()
+				for _, v := range jobs.Val() {
+					dur := client.Get(v)
+					arr.Add(doc().AddKV("Name", v).AddKV("Duration", dur.Val()))
+				}
+				body.AppendArray("Last_5_Jobs", arr)
+			}
+			b, _ := json.Marshal(body.Build())
 			resp := doc().
 				AddKV("statusCode", "200").
 				AddKV("body", string(b))
@@ -109,7 +119,13 @@ func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 				r_totals := client.Set(geoindex.JScan+geoindex.Totalrun, "0", 0)
 				r1_totals := client.Set(geoindex.JGroup+geoindex.Totalrun, "0", 0)
 				r2_totals := client.Set(geoindex.JProcess+geoindex.Totalrun, "0", 0)
-				log.Println("initialized values:", r, r1, r2, r_totals, r1_totals, r2_totals)
+				cj := client.Del("CompletedJobs")
+				log.Println("initialized values:", r, r1, r2, r_totals, r1_totals, r2_totals, cj)
+				return geoindex.NewIndexerResponse(true, 0), nil
+			case geoindex.JobComplete:
+				client.Set(req.Name, req.Duration.String(), 0)
+				client.LPush("CompletedJobs", req.Name)
+				client.LTrim("CompletedJobs", 0, 5)
 				return geoindex.NewIndexerResponse(true, 0), nil
 			}
 			log.Println("Unhandled request")

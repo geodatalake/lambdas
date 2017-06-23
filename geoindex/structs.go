@@ -9,6 +9,13 @@ import (
 	"github.com/geodatalake/lambdas/bucket"
 )
 
+func StringFor(name, dflt string, m map[string]interface{}) string {
+	if val, ok := m[name]; ok {
+		return val.(string)
+	}
+	return dflt
+}
+
 type BucketFileInfo struct {
 	Region       string `json:"region"`
 	Bucket       string `json:"bucket"`
@@ -28,20 +35,12 @@ func NewBucketFileInfo(bf *bucket.BucketFile) *BucketFileInfo {
 }
 
 func (bfi *BucketFileInfo) Unmarshal(m map[string]interface{}) error {
-	if r, ok := m["region"]; ok {
-		bfi.Region = r.(string)
-	}
-	if b, ok := m["bucket"]; ok {
-		bfi.Bucket = b.(string)
-	}
-	if k, ok := m["key"]; ok {
-		bfi.Key = k.(string)
-	}
+	bfi.Region = StringFor("region", "", m)
+	bfi.Bucket = StringFor("bucket", "", m)
+	bfi.Key = StringFor("key", "", m)
+	bfi.LastModified = StringFor("lastModified", "", m)
 	if s, ok := m["size"]; ok {
 		bfi.Size = int64(s.(float64))
-	}
-	if lm, ok := m["lastModified"]; ok {
-		bfi.LastModified = lm.(string)
 	}
 	return nil
 }
@@ -163,12 +162,8 @@ type BucketRequest struct {
 }
 
 func (br *BucketRequest) Unmarshal(m map[string]interface{}) error {
-	if b, ok := m["bucket"]; ok {
-		br.Bucket = b.(string)
-	}
-	if r, ok := m["region"]; ok {
-		br.Region = r.(string)
-	}
+	br.Bucket = StringFor("bucket", "", m)
+	br.Region = StringFor("region", "", m)
 	return nil
 }
 
@@ -251,9 +246,7 @@ func (cr *ClusterRequest) String() string {
 }
 
 func (cr *ClusterRequest) Unmarshal(m map[string]interface{}) error {
-	if id, ok := m["id"]; ok {
-		cr.Id = id.(string)
-	}
+	cr.Id = StringFor("id", "", m)
 	if rtype, ok := m["type"]; ok {
 		if val, good := rtype.(float64); good {
 			switch int64(val) {
@@ -345,9 +338,7 @@ func (cr *ClusterResponse) Unmarshal(m map[string]interface{}) error {
 	} else {
 		cr.Timeout = time.Minute
 	}
-	if pi, ok := m["parentId"]; ok {
-		cr.ParentId = pi.(string)
-	}
+	cr.ParentId = StringFor("parentId", "", m)
 	if item, ok := m["item"]; ok {
 		if cItem, good := item.(map[string]interface{}); good {
 			cr.Item = new(ClusterRequest)
@@ -394,22 +385,13 @@ func (cq *ClusterQueue) Unmarshal(m map[string]interface{}) error {
 	} else {
 		return fmt.Errorf("No items found")
 	}
-	if next, ok := m["next"]; ok {
-		cq.Next = next.(string)
-	} else {
-		return fmt.Errorf("next not found")
-	}
-	if st, ok := m["startTime"]; ok {
-		cq.StartTime = st.(string)
-	} else {
-		return fmt.Errorf("startTime not found")
-	}
+	cq.Next = StringFor("next", "", m)
+	cq.StartTime = StringFor("startTime", "", m)
+	cq.ParentId = StringFor("parentId", "", m)
 	if mn, ok := m["maxNext"]; ok {
 		if mx, good := mn.(float64); good {
 			cq.MaxNext = int(mx)
 		}
-	} else {
-		return fmt.Errorf("maxNext not found")
 	}
 	return nil
 }
@@ -420,12 +402,14 @@ const (
 	Enter IndexerRequestType = iota
 	Leave
 	Reset
+	JobComplete
 )
 
 type IndexerRequest struct {
 	RequestType IndexerRequestType `json:"type"`
 	Name        string             `json:"name"`
 	Num         int                `json:"num"`
+	Duration    time.Duration      `json:"duration"`
 }
 
 func (ir *IndexerRequest) String() string {
@@ -437,8 +421,10 @@ func (ir *IndexerRequest) String() string {
 		rtype = "Leave"
 	case Reset:
 		rtype = "Reset"
+	case JobComplete:
+		rtype = "JobComplete"
 	}
-	return fmt.Sprintf("%s: Name: %s, Num: %d", rtype, ir.Name, ir.Num)
+	return fmt.Sprintf("%s: Name: %s, Num: %d, Duration: %s", rtype, ir.Name, ir.Num, ir.Duration.String())
 }
 
 func (ir *IndexerRequest) Unmarshal(m map[string]interface{}) error {
@@ -451,6 +437,8 @@ func (ir *IndexerRequest) Unmarshal(m map[string]interface{}) error {
 				ir.RequestType = Leave
 			case 2:
 				ir.RequestType = Reset
+			case 3:
+				ir.RequestType = JobComplete
 			default:
 				return fmt.Errorf("Unknown IndexerRequestType %v", int64(val))
 			}
@@ -471,6 +459,11 @@ func (ir *IndexerRequest) Unmarshal(m map[string]interface{}) error {
 		}
 	} else {
 		return fmt.Errorf("No num property found")
+	}
+	if d, ok := m["duration"]; ok {
+		if dur, good := d.(float64); good {
+			ir.Duration = time.Duration(int64(dur))
+		}
 	}
 	return nil
 }

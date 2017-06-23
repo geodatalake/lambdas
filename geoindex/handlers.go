@@ -122,8 +122,24 @@ func (cr *ClusterRequest) Handle(specs HandlerSpec, ctx *runtime.Context) *JobSp
 func MasterCluster(cr *ClusterRequest, specs HandlerSpec, ctx *runtime.Context) error {
 	if cr.Master != nil {
 		log.Println("Assuming master, starting processing a queue of", len(cr.Master.Items), "jobs", cr.Master.MaxNext, "jobs at a time")
-		nq, timedout := SendQueue(specs, cr.Master, ctx.RemainingTimeInMillis(), false)
+		nq, timedout, complete := SendQueue(specs, cr.Master, ctx, false)
 		for {
+			if complete {
+				st, err := time.Parse("2006-01-02 15:04:05.000000000 -0700 MST", cr.Master.StartTime)
+				if err != nil {
+					log.Println("Job", cr.Master.ParentId, "completed but time", cr.Master.StartTime, "could not be parsed", err)
+				} else {
+					dur := time.Now().UTC().Sub(st)
+					log.Println("Job", cr.Master.ParentId, "Completed in", dur)
+					ir := new(IndexerRequest)
+					ir.Name = cr.Master.ParentId
+					ir.Duration = dur
+					ir.RequestType = JobComplete
+					mc := NewMonitorConn().WithRegion("us-west-2").WithFunctionArn(specs.GetMonitor())
+					mc.Invoke(ir)
+				}
+				return nil
+			}
 			if timedout {
 				if nq != nil {
 					req := new(ClusterRequest)
@@ -133,7 +149,7 @@ func MasterCluster(cr *ClusterRequest, specs HandlerSpec, ctx *runtime.Context) 
 					return nil
 				}
 			} else if nq != nil {
-				nq, timedout = SendQueue(specs, nq, ctx.RemainingTimeInMillis(), false)
+				nq, timedout, complete = SendQueue(specs, nq, ctx, false)
 			} else {
 				return nil
 			}
@@ -341,9 +357,7 @@ func index(br *scale.BoundsResult, specs HandlerSpec) error {
 	return nil
 }
 
-func SendQueue(specs HandlerSpec, cq *ClusterQueue, remaining int64, sendSqs bool) (*ClusterQueue, bool) {
-	jobDuration := time.Duration(remaining * 1000 * 1000)
-
+func SendQueue(specs HandlerSpec, cq *ClusterQueue, ctx *runtime.Context, sendSqs bool) (*ClusterQueue, bool, bool) {
 	numToSend := cq.MaxNext
 	if numToSend > len(cq.Items) {
 		numToSend = len(cq.Items)
@@ -366,10 +380,13 @@ func SendQueue(specs HandlerSpec, cq *ClusterQueue, remaining int64, sendSqs boo
 	if minDuration > ((4 * time.Minute) + (30 * time.Second)) {
 		log.Println("Timeout can not exceed 4.5 minutes. Not possible to execute a job with timeout", maxTimeout.String())
 		cq.Items = cq.Items[:0]
-		return nil, false
+		return nil, false, true
 	}
+
+	jobDuration := time.Duration(ctx.RemainingTimeInMillis() * 1000 * 1000)
+
 	if jobDuration < minDuration {
-		return cq, true
+		return cq, true, len(cq.Items) == 0
 	}
 	jobTimeout := time.After(jobDuration - minDuration)
 
@@ -379,6 +396,7 @@ func SendQueue(specs HandlerSpec, cq *ClusterQueue, remaining int64, sendSqs boo
 			ni = append(ni, i)
 		}
 	}
+	nextQ := cq.CloneWith(ni)
 
 	indexer := NewMonitorConn().
 		WithRegion("us-west-2").
@@ -387,7 +405,6 @@ func SendQueue(specs HandlerSpec, cq *ClusterQueue, remaining int64, sendSqs boo
 	indexer.InvokeIndexer(Enter, JScan, counts[0])
 	indexer.InvokeIndexer(Enter, JProcess, counts[1])
 	indexer.InvokeIndexer(Enter, JGroup, counts[2])
-	nextQ := cq.CloneWith(ni)
 	var wait sync.WaitGroup
 	wait.Add(numToSend)
 
@@ -428,14 +445,14 @@ func SendQueue(specs HandlerSpec, cq *ClusterQueue, remaining int64, sendSqs boo
 	indexer.InvokeIndexer(Leave, JGroup, counts[2])
 
 	for _, resp := range responses {
-		if resp != nil {
+		if resp != nil && len(resp.Items) > 0 {
 			nextQ.Items = append(nextQ.Items, resp.Items...)
 		}
 	}
 	if len(nextQ.Items) > 0 {
-		return nextQ, timedOut
+		return nextQ, timedOut, false
 	}
-	return nil, timedOut
+	return nextQ, false, true
 }
 
 func sendJob(cr *ClusterRequest, next string, timeout <-chan time.Time) (bool, *lambda.InvokeOutput) {
