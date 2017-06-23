@@ -18,7 +18,7 @@ import (
 	"github.com/go-redis/redis"
 )
 
-var version = "0.22"
+var version = "0.23"
 
 type TraceLogger struct {
 }
