@@ -4,23 +4,52 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/lambda"
 	"github.com/geodatalake/lambdas/scale"
 )
 
-func (ct *ContractTracker) InvokeIndexer(typ IndexerRequestType, name string, num int) (*IndexerResponse, error) {
-	if ct.provider == nil {
-		if ct.endpoint == "" {
-			return nil, fmt.Errorf("Missing monitor in environment")
+type MonitorConn struct {
+	provider *lambda.Lambda
+	sess     *session.Session
+	name     string
+	region   string
+}
+
+func NewMonitorConn() *MonitorConn {
+	return new(MonitorConn).WithRegion("us-east-1")
+}
+
+func (mc *MonitorConn) WithRegion(region string) *MonitorConn {
+	mc.region = region
+	return mc
+}
+
+func (mc *MonitorConn) WithSession(session *session.Session) *MonitorConn {
+	mc.sess = session
+	return mc
+}
+
+func (mc *MonitorConn) WithFunctionArn(name string) *MonitorConn {
+	mc.name = name
+	return mc
+}
+
+func (mc *MonitorConn) InvokeIndexer(typ IndexerRequestType, name string, num int) (*IndexerResponse, error) {
+	if mc.provider == nil {
+		if mc.name == "" {
+			return nil, fmt.Errorf("Missing name in MonitorConn")
 		}
-		if sess, err := scale.GetAwsSession(); err == nil {
-			ct.provider = lambda.New(sess, aws.NewConfig().WithRegion("us-west-2"))
-		} else {
-			return nil, err
+		if mc.sess == nil {
+			if sess, err := scale.GetAwsSession(); err == nil {
+				mc.sess = sess
+			} else {
+				return nil, err
+			}
 		}
+		mc.provider = lambda.New(mc.sess, aws.NewConfig().WithRegion(mc.region))
 	}
 
 	req := new(IndexerRequest)
@@ -28,8 +57,8 @@ func (ct *ContractTracker) InvokeIndexer(typ IndexerRequestType, name string, nu
 	req.Name = name
 	req.Num = num
 	b, _ := json.Marshal(req)
-	out, err := ct.provider.Invoke(new(lambda.InvokeInput).
-		SetFunctionName(ct.endpoint).
+	out, err := mc.provider.Invoke(new(lambda.InvokeInput).
+		SetFunctionName(mc.name).
 		SetInvocationType(lambda.InvocationTypeRequestResponse).
 		SetPayload(b))
 	if err != nil {
@@ -68,96 +97,16 @@ func AsyncCallNext(cr *ClusterRequest, name string) (*lambda.InvokeOutput, error
 	return callNext(cr, name, lambda.InvocationTypeEvent)
 }
 
-func PoolCallNexts(calls []*ClusterRequest, name string, contractFor *ContractFor) ([]*lambda.InvokeOutput, error) {
-	retval := make([]*lambda.InvokeOutput, 0, len(calls))
-	log.Println("Making", len(calls), "Lambda Invocations")
-	errc := make(chan error, len(calls))
-	done := make(chan *lambda.InvokeOutput)
-	for _, cr := range calls {
-		go func(c *ClusterRequest) {
-			if contractFor != nil {
-				c.Contracted = contractFor.ReserveWait()
-			} else {
-				c.Contracted = false
-			}
-			out, err := AsyncCallNext(c, name)
-			if err != nil {
-				errc <- err
-			} else {
-				done <- out
-			}
-		}(cr)
-	}
-	total := 0
-	timeExpired := false
-	var lastErr error
-	timeout := time.After(20 * time.Second)
-DONE:
-	for {
-		select {
-		case out := <-done:
-			retval = append(retval, out)
-			total++
-			if total >= len(calls) {
-				break DONE
-			}
-		case e := <-errc:
-			lastErr = e
-			total++
-			if total >= len(calls) {
-				break DONE
-			}
-		case <-timeout:
-			timeExpired = true
-			break DONE
+func AlertCallNext(cr *ClusterRequest, name string) (chan *lambda.InvokeOutput, chan error) {
+	resultChan := make(chan *lambda.InvokeOutput, 1)
+	errChan := make(chan error, 1)
+	go func() {
+		out, err := callNext(cr, name, lambda.InvocationTypeRequestResponse)
+		if err != nil {
+			errChan <- err
+		} else {
+			resultChan <- out
 		}
-	}
-	if timeExpired {
-		return nil, fmt.Errorf("Timeout expired after %d executions", total)
-	}
-	return retval, lastErr
-}
-
-type ChunkHandler struct {
-	chunk []*ClusterRequest
-}
-
-func NewChunkHandler(sz int) *ChunkHandler {
-	if sz <= 0 {
-		sz = 10
-	}
-	return &ChunkHandler{chunk: make([]*ClusterRequest, 0, sz)}
-}
-
-func (ch *ChunkHandler) String() string {
-	return fmt.Sprintf("%d requests", len(ch.chunk))
-}
-
-func (ch *ChunkHandler) Add(cr *ClusterRequest) bool {
-	ch.chunk = append(ch.chunk, cr)
-	return ch.Full()
-}
-
-func (ch *ChunkHandler) Full() bool {
-	return len(ch.chunk) == cap(ch.chunk)
-}
-
-func (ch *ChunkHandler) Empty() bool {
-	return len(ch.chunk) == 0
-}
-
-func (ch *ChunkHandler) Clear() {
-	// to avoid memory leaks, we have to clear the slice
-	// simply resetting the pointers to zero does not free
-	// the pointers
-	for i := 0; i < len(ch.chunk); i++ {
-		ch.chunk[i] = nil
-	}
-	ch.chunk = ch.chunk[:0]
-}
-
-func (ch *ChunkHandler) Send(name string, contractFor *ContractFor) ([]*lambda.InvokeOutput, error) {
-	retval, err := PoolCallNexts(ch.chunk, name, contractFor)
-	ch.Clear()
-	return retval, err
+	}()
+	return resultChan, errChan
 }
