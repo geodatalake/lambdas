@@ -99,6 +99,14 @@ func (c *SqsInstance) SendClusterRequest(cr *ClusterRequest) (string, error) {
 	}
 }
 
+func (c *SqsInstance) SendClusterResponse(cr *ClusterResponse) (string, error) {
+	if b, err := json.Marshal(cr); err == nil {
+		return c.Send(string(b))
+	} else {
+		return "", err
+	}
+}
+
 func (c *SqsInstance) Delete(receiptHandle string) error {
 	if err := c.init(); err != nil {
 		return fmt.Errorf("Unable to create client")
