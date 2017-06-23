@@ -37,7 +37,7 @@ func (mc *MonitorConn) WithFunctionArn(name string) *MonitorConn {
 	return mc
 }
 
-func (mc *MonitorConn) InvokeIndexer(typ IndexerRequestType, name string, num int) (*IndexerResponse, error) {
+func (mc *MonitorConn) Invoke(req *IndexerRequest) (*IndexerResponse, error) {
 	if mc.provider == nil {
 		if mc.name == "" {
 			return nil, fmt.Errorf("Missing name in MonitorConn")
@@ -51,11 +51,6 @@ func (mc *MonitorConn) InvokeIndexer(typ IndexerRequestType, name string, num in
 		}
 		mc.provider = lambda.New(mc.sess, aws.NewConfig().WithRegion(mc.region))
 	}
-
-	req := new(IndexerRequest)
-	req.RequestType = typ
-	req.Name = name
-	req.Num = num
 	b, _ := json.Marshal(req)
 	out, err := mc.provider.Invoke(new(lambda.InvokeInput).
 		SetFunctionName(mc.name).
@@ -70,6 +65,14 @@ func (mc *MonitorConn) InvokeIndexer(typ IndexerRequestType, name string, num in
 		return retval, jsonErr
 	}
 	return retval, nil
+}
+
+func (mc *MonitorConn) InvokeIndexer(typ IndexerRequestType, name string, num int) (*IndexerResponse, error) {
+	req := new(IndexerRequest)
+	req.RequestType = typ
+	req.Name = name
+	req.Num = num
+	return mc.Invoke(req)
 }
 
 func callNext(cr *ClusterRequest, name, invokeType string) (*lambda.InvokeOutput, error) {
