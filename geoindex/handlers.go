@@ -88,6 +88,7 @@ func (cr *ClusterRequest) Handle(specs HandlerSpec, ctx *runtime.Context) *JobSp
 			masterCr.Id = cq.ParentId
 			log.Println("Sending", len(items), "jobs to master")
 			if _, err := AsyncCallNext(masterCr, next); err != nil {
+				log.Println("Error invoking master lambda", err)
 				js.Err = err
 			}
 		}
