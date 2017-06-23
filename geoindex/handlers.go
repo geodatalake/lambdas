@@ -132,7 +132,7 @@ func MasterCluster(cr *ClusterRequest, specs HandlerSpec, ctx *runtime.Context) 
 					dur := time.Now().UTC().Sub(st)
 					log.Println("Job", cr.Master.ParentId, "Completed in", dur)
 					ir := new(IndexerRequest)
-					ir.Name = nq.ParentId
+					ir.Name = cr.Master.ParentId
 					ir.Duration = dur
 					ir.RequestType = JobComplete
 					mc := NewMonitorConn().WithRegion("us-west-2").WithFunctionArn(specs.GetMonitor())
