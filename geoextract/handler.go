@@ -11,11 +11,14 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/eawsy/aws-lambda-go-core/service/lambda/runtime"
 	"github.com/geodatalake/lambdas/geoindex"
 	"github.com/go-redis/redis"
 )
+
+var version = "0.20"
 
 type TraceLogger struct {
 }
@@ -133,6 +136,7 @@ func (rp *RequestParams) DeleteSqs(rc string) error {
 
 func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 	params := NewParams()
+	log.Println("Version", version)
 	log.Println("Params", params)
 	if params.UseStats() {
 		params.StatsClient = redis.NewClient(&redis.Options{
@@ -141,6 +145,8 @@ func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 			DB:       0,  // use default DB
 		})
 	}
+	remainingDuration := time.Duration(ctx.RemainingTimeInMillis() * 1000 * 1000)
+	log.Println("Time remaining for Job", remainingDuration)
 	if m, ok := evt.(map[string]interface{}); ok {
 		req := new(geoindex.ClusterRequest)
 		if params.SqsIn != "" {
@@ -152,20 +158,24 @@ func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 					return nil, err1
 				}
 			} else {
+				log.Println("No ReceiptHandle found to delete")
 				return nil, fmt.Errorf("No ReceiptHandle found to delete")
 			}
 		} else {
 			if unErr := req.Unmarshal(m); unErr != nil {
+				log.Println("Error decoding ClusterRequest", unErr)
 				return make(map[string]string), unErr
 			}
 		}
-		js := req.Handle(params)
+		js := req.Handle(params, ctx)
 		if js.IsSuccess() {
 			return js, nil
 		} else {
+			log.Println("Error executing job", js.Err)
 			return nil, js.Err
 		}
 	} else {
+		log.Println("ERROR: evt is not of type map[string]interface{}")
 		return nil, fmt.Errorf("evt is not of type map[string]interface{}")
 	}
 }

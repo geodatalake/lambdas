@@ -67,6 +67,16 @@ func (c *SqsInstance) init() error {
 	return nil
 }
 
+func (c *SqsInstance) SendAsJson(message string) (string, error) {
+	data := make(map[string]interface{})
+	data["Message"] = message
+	b, err := json.Marshal(data)
+	if err != nil {
+		return "", fmt.Errorf("Error converting %s to json: %v", message, err)
+	}
+	return c.Send(string(b))
+}
+
 func (c *SqsInstance) Send(message string) (string, error) {
 	if err := c.init(); err != nil {
 		return "", fmt.Errorf("Unable to create client")
@@ -82,6 +92,14 @@ func (c *SqsInstance) Send(message string) (string, error) {
 }
 
 func (c *SqsInstance) SendClusterRequest(cr *ClusterRequest) (string, error) {
+	if b, err := json.Marshal(cr); err == nil {
+		return c.Send(string(b))
+	} else {
+		return "", err
+	}
+}
+
+func (c *SqsInstance) SendClusterResponse(cr *ClusterResponse) (string, error) {
 	if b, err := json.Marshal(cr); err == nil {
 		return c.Send(string(b))
 	} else {

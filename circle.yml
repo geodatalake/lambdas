@@ -22,6 +22,7 @@ dependencies:
     - go get -u github.com/satori/go.uuid
     - go get -u github.com/smartystreets/go-aws-auth
     - go get -u github.com/go-redis/redis
+    - go get -u -d github.com/eawsy/aws-lambda-go-core/...
 
   override:
     - rm -rf ${HOME}/.go_workspace/src/github.com/geodatalake/

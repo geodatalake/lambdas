@@ -2,11 +2,13 @@ package geoindex
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
+	"time"
 )
 
 func TestUnmarshal(t *testing.T) {
-	testString := `{"type":1,"file":{"file":{"region":"us-east-1","bucket":"test-data-lake-009","key":"sources/18STJ6251.tif","size":9137084,"lastModified":"2017-06-14T02:42:31Z"}}}`
+	testString := `{"type":1,"underContract":true,"file":{"file":{"region":"us-east-1","bucket":"test-data-lake-009","key":"sources/18STJ6251.tif","size":9137084,"lastModified":"2017-06-14T02:42:31Z"}}}`
 
 	var req map[string]interface{}
 	if err := json.Unmarshal([]byte(testString), &req); err != nil {
@@ -15,16 +17,24 @@ func TestUnmarshal(t *testing.T) {
 		cr := new(ClusterRequest)
 		if err1 := cr.Unmarshal(req); err1 != nil {
 			t.Errorf("Error unmarshling %v", err1)
+		} else {
+			if cr.RequestType != ExtractFileType {
+				t.Errorf("Expected ExtractFileType, but was %v", cr.RequestType)
+			}
 		}
 	}
 	// test Bucket requests
-	testString = `{"type": 0,"bucket": {"bucket": "test-data-lake-010","region": "us-west-2"}}`
+	testString = `{"type": 0, "underContract": false, "bucket": {"bucket": "test-data-lake-010","region": "us-west-2"}}`
 	if err := json.Unmarshal([]byte(testString), &req); err != nil {
 		t.Errorf("Error unmarshaing JSON string %v", err)
 	} else {
 		cr := new(ClusterRequest)
 		if err1 := cr.Unmarshal(req); err1 != nil {
 			t.Errorf("Error unmarshling %v", err1)
+		} else {
+			if cr.RequestType != ScanBucket {
+				t.Errorf("Expected ScanBucket, but was %v", cr.RequestType)
+			}
 		}
 	}
 	// test DirRequest
@@ -41,6 +51,52 @@ func TestUnmarshal(t *testing.T) {
 			} else {
 				if len(cr.DirFiles.Files) != 695 {
 					t.Errorf("Expected 695 Dir Files, received %d", len(cr.DirFiles.Files))
+				}
+			}
+		}
+	}
+
+	// Test ClusterMaster request
+	cq := new(ClusterQueue)
+	cq.Next = "next"
+	cq.MaxNext = 30
+	cq.ParentId = "id"
+	cq.StartTime = time.Now().UTC().String()
+	cq.Items = make([]*ClusterResponse, 0, 2)
+	for i := 0; i < 2; i++ {
+		cr := new(ClusterRequest)
+		cr.RequestType = ExtractFileType
+		cr.File = new(ExtractFile)
+		cr.File.File = new(BucketFileInfo)
+		cr.File.File.Bucket = "bucket"
+		cr.File.File.Key = "Key" + fmt.Sprintf("%d", i)
+		cr.File.File.Region = "us-east-1"
+		cq.Items = append(cq.Items, NewClusterResponse(cr, "id"))
+	}
+	test := new(ClusterRequest)
+	test.RequestType = ClusterMaster
+	test.Master = cq
+
+	b, err := json.Marshal(test)
+	if err != nil {
+		t.Errorf("Error marshaling test: %v", err)
+	} else {
+		if err := json.Unmarshal(b, &req); err != nil {
+			t.Errorf("Error unmarshaing JSON string %v", err)
+		} else {
+			cr := new(ClusterRequest)
+			if err1 := cr.Unmarshal(req); err1 != nil {
+				t.Errorf("Error unmarshling %v", err1)
+			} else {
+				if cr.RequestType != ClusterMaster {
+					t.Errorf("Expected ClusterMaster request, but was %v", cr.RequestType)
+				}
+				if cr.Master == nil {
+					t.Errorf("Master is nil")
+				} else {
+					if len(cr.Master.Items) != 2 {
+						t.Errorf("Expected 2 items, received %d", len(cr.Master.Items))
+					}
 				}
 			}
 		}
