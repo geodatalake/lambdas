@@ -455,6 +455,8 @@ func (ir *IndexerRequest) Unmarshal(m map[string]interface{}) error {
 				ir.RequestType = Leave
 			case 2:
 				ir.RequestType = Reset
+			case 3:
+				ir.RequestType = JobComplete
 			default:
 				return fmt.Errorf("Unknown IndexerRequestType %v", int64(val))
 			}
