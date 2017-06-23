@@ -119,7 +119,8 @@ func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 				r_totals := client.Set(geoindex.JScan+geoindex.Totalrun, "0", 0)
 				r1_totals := client.Set(geoindex.JGroup+geoindex.Totalrun, "0", 0)
 				r2_totals := client.Set(geoindex.JProcess+geoindex.Totalrun, "0", 0)
-				log.Println("initialized values:", r, r1, r2, r_totals, r1_totals, r2_totals)
+				cj := client.Del("CompletedJobs")
+				log.Println("initialized values:", r, r1, r2, r_totals, r1_totals, r2_totals, cj)
 				return geoindex.NewIndexerResponse(true, 0), nil
 			case geoindex.JobComplete:
 				client.Set(req.Name, req.Duration.String(), 0)
