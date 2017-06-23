@@ -69,7 +69,7 @@ func TestUnmarshal(t *testing.T) {
 		cr.File = new(ExtractFile)
 		cr.File.File = new(BucketFileInfo)
 		cr.File.File.Bucket = "bucket"
-		cr.File.File.Key = "Key" + fmt.Sprintf("%d", index)
+		cr.File.File.Key = "Key" + fmt.Sprintf("%d", i)
 		cr.File.File.Region = "us-east-1"
 		cq.Items = append(cq.Items, NewClusterResponse(cr, "id"))
 	}
