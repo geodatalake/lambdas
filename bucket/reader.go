@@ -63,19 +63,15 @@ func mineAllObjects(bucket, path string, svc *s3.S3) ([]*s3.Object, error) {
 
 func ParsePath(dir string) (bucket, prefix string) {
 	var parts []string
+	start := 0
 	if strings.HasPrefix(dir, "s3://") {
-		if strings.HasSuffix(dir, "/") {
-			parts = strings.Split(dir[5:len(dir)-1], "/")
-		} else {
-			parts = strings.Split(dir[5:], "/")
-		}
-	} else {
-		if strings.HasSuffix(dir, "/") {
-			parts = strings.Split(dir[:len(dir)-1], "/")
-		} else {
-			parts = strings.Split(dir, "/")
-		}
+		start = 5
 	}
+	end := len(dir)
+	if strings.HasSuffix(dir, "/") {
+		end = end - 1
+	}
+	parts = strings.Split(dir[start:end], "/")
 	bucket = parts[0]
 	if len(parts) > 1 {
 		prefix = strings.Join(parts[1:], "/")
@@ -128,6 +124,27 @@ func (bf *BucketFile) Paths() ([]string, string) {
 }
 
 func readBucket(region, dir string, svc *s3.S3) ([]*BucketFile, error) {
+	bucket, prefix := ParsePath(dir)
+	objects, err := mineAllObjects(bucket, prefix, svc)
+	if err != nil {
+		return []*BucketFile{}, err
+	}
+
+	retval := make([]*BucketFile, 0, len(objects))
+	dirName := fmt.Sprintf("%s/", prefix)
+	for _, object := range objects {
+		filename := aws.StringValue(object.Key)
+		// The directory will match, so filter it out
+		if filename != dirName {
+			dateTime := fmt.Sprintf("%s", object.LastModified.UTC().Format(ISO8601FORMAT))
+			retval = append(retval, NewBucketFile(region, bucket, aws.StringValue(object.Key), dateTime, *object.Size))
+		}
+	}
+	log.Println("Read", len(retval), "BucketFiles")
+	return retval, nil
+}
+
+func ReadBucketDir(region, dir string, svc *s3.S3) ([]*BucketFile, error) {
 	bucket, prefix := ParsePath(dir)
 	objects, err := mineAllObjects(bucket, prefix, svc)
 	if err != nil {
