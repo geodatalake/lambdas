@@ -56,7 +56,7 @@ func main() {
 		dirs.Print(0, ch)
 		log.Println("Closing channel")
 		close(ch)
-		if *countsOnly {
+		if !*countsOnly {
 			log.Println(strings.Join(output, "\n"))
 		}
 		log.Println("Total Items Found:", totalItems)
