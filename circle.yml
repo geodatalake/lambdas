@@ -41,6 +41,7 @@ dependencies:
     - go build $IMPORT_PATH/vector
     - go build $IMPORT_PATH/geoindex
     - go build $IMPORT_PATH/scale
+    - go build $IMPORT_PATH/jobmanager
     - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/extractbucket
     - cp extractbucket $CIRCLE_ARTIFACTS
     - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/filegrouper
@@ -64,6 +65,7 @@ test:
     - go vet $IMPORT_PATH/vector
     - go vet $IMPORT_PATH/geoindex
     - go vet $IMPORT_PATH/scale
+    - go vet $IMPORT_PATH/jobmanager
     - go vet $IMPORT_PATH/cmd/extractbucket
     - go vet $IMPORT_PATH/cmd/filegrouper
     - go vet $IMPORT_PATH/cmd/elastictest
@@ -77,6 +79,7 @@ test:
     - go test $IMPORT_PATH/scale
     - go test $IMPORT_PATH/proj4support
     - go test $IMPORT_PATH/elastichelper
+    - go test $IMPORT_PATH/jobmanager
 
 deployment:
   dev:
