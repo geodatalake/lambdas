@@ -17,6 +17,7 @@ import (
 func main() {
 	region := flag.String("r", "us-west-2", "AWS Region")
 	countsOnly := flag.Bool("co", false, "Only counts")
+	prefix := flag.String("prefix", "", "Prefix to use")
 	flag.Parse()
 
 	overallSize := int64(0)
@@ -25,6 +26,18 @@ func main() {
 	for _, uri := range bucketUris {
 		log.Println(uri)
 		svc := s3.New(session.New(), &aws.Config{Region: region})
+		if *prefix != "" {
+			files, err := bucket.ReadBucketDir(*region, uri, *prefix, svc)
+			if err != nil {
+				log.Println(err)
+				os.Exit(10)
+			}
+			log.Println("Found", len(files), "files")
+			for _, f := range files {
+				fmt.Printf("%+v\n", *f)
+			}
+			os.Exit(0)
+		}
 		dirs, err := bucket.ListBucketStructure(*region, uri, svc)
 		output := make([]string, 0, 128)
 		totalItems := 0
