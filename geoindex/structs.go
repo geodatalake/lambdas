@@ -1,19 +1,44 @@
 package geoindex
 
 import (
+	"errors"
 	"fmt"
+	"log"
 	"reflect"
 	"strings"
 	"time"
 
 	"github.com/geodatalake/lambdas/bucket"
+	"github.com/geodatalake/lambdas/jobmanager"
 )
+
+func Float64For(name string, dflt float64, m map[string]interface{}) float64 {
+	if val, ok := m[name]; ok {
+		if v, good := val.(float64); good {
+			return v
+		}
+	}
+	return dflt
+}
+
+func IntFor(name string, dflt int, m map[string]interface{}) int {
+	return int(Float64For(name, float64(dflt), m))
+}
 
 func StringFor(name, dflt string, m map[string]interface{}) string {
 	if val, ok := m[name]; ok {
 		return val.(string)
 	}
 	return dflt
+}
+
+func SubpropFor(name string, m map[string]interface{}) (map[string]interface{}, bool) {
+	if j, ok := m[name]; ok {
+		if data, good := j.(map[string]interface{}); good {
+			return data, good
+		}
+	}
+	return nil, false
 }
 
 type BucketFileInfo struct {
@@ -114,7 +139,7 @@ func (ef *ExtractFile) String() string {
 
 func (ef *ExtractFile) Unmarshal(m map[string]interface{}) error {
 	ef.File = new(BucketFileInfo)
-	if f, ok := m["file"].(map[string]interface{}); ok {
+	if f, ok := SubpropFor("file", m); ok {
 		if err1 := ef.File.Unmarshal(f); err1 != nil {
 			return fmt.Errorf("Error unmarshalling bucketFileInfo %v", err1)
 		}
@@ -168,45 +193,20 @@ func (br *BucketRequest) Unmarshal(m map[string]interface{}) error {
 }
 
 type DirRequest struct {
-	Files []*bucket.BucketFile `json:"files"`
+	Bucket string `json:"bucket"`
+	Region string `json:"region"`
+	Prefix string `json:"prefix"`
 }
 
 func (dr *DirRequest) String() string {
-	if len(dr.Files) != 0 {
-		val := make([]string, 0, len(dr.Files))
-		for _, f := range dr.Files {
-			val = append(val, f.Key)
-		}
-		return strings.Join(val, ", ")
-	} else {
-		return "empty"
-	}
+	return fmt.Sprintf("{DirRequest: Region: %s, Bucket: %s, Prefix: %s}", dr.Region, dr.Bucket, dr.Prefix)
 }
 
 func (dr *DirRequest) Unmarshal(m map[string]interface{}) error {
-	if a, ok := m["files"]; ok {
-		if arr, ok := a.([]interface{}); ok {
-			dr.Files = make([]*bucket.BucketFile, 0, len(arr))
-			for _, v := range arr {
-				if bf, ok := v.(map[string]interface{}); ok {
-					resolved := new(bucket.BucketFile)
-					if err := resolved.Unmarshal(bf); err != nil {
-						return fmt.Errorf("Error unmarshaing bucket.BucketFile %v", err)
-					}
-					dr.Files = append(dr.Files, resolved)
-				}
-			}
-		} else {
-			return fmt.Errorf("files is not of type []interface{}, it is %s", reflect.TypeOf(a).String())
-		}
-	} else {
-		return fmt.Errorf("No files found in map %v", m)
-	}
+	dr.Bucket = StringFor("bucket", "", m)
+	dr.Region = StringFor("region", "", m)
+	dr.Prefix = StringFor("prefix", "", m)
 	return nil
-}
-
-func (dr *DirRequest) GetKeys() []*bucket.BucketFile {
-	return dr.Files
 }
 
 type DcosRequest int
@@ -220,12 +220,12 @@ const (
 )
 
 type ClusterRequest struct {
-	RequestType DcosRequest    `json:"type"`
-	Bucket      *BucketRequest `json:"bucket,omitempty"`
-	File        *ExtractFile   `json:"file,omitempty"`
-	DirFiles    *DirRequest    `json:"dir,omitempty"`
-	Master      *ClusterQueue  `json:"master,omitempty"`
-	Id          string         `json:"id"`
+	RequestType DcosRequest           `json:"type"`
+	Bucket      *BucketRequest        `json:"bucket,omitempty"`
+	File        *ExtractFile          `json:"file,omitempty"`
+	DirFiles    *DirRequest           `json:"dir,omitempty"`
+	Packet      *jobmanager.JobPacket `json:"packet,omitempty"`
+	Id          string                `json:"id"`
 }
 
 func (cr *ClusterRequest) String() string {
@@ -237,9 +237,9 @@ func (cr *ClusterRequest) String() string {
 	case GroupFiles:
 		return fmt.Sprintf("Request: GroupFiles, Id: %s, %s", cr.Id, cr.DirFiles.String())
 	case MineSQS:
-		return fmt.Sprintf("Request: MineSQS, Id: %s, %+v", cr.Id, *cr.Master)
+		return fmt.Sprintf("Request: MineSQS, Id: %s, %+v", cr.Id, cr.Packet)
 	case ClusterMaster:
-		return fmt.Sprintf("Request: ClusterMaster, Id: %s, %+v", cr.Id, *cr.Master)
+		return fmt.Sprintf("Request: ClusterMaster, Id: %s, %+v", cr.Id, cr.Packet)
 	default:
 		return "Unknown request type"
 	}
@@ -292,20 +292,26 @@ func (cr *ClusterRequest) Unmarshal(m map[string]interface{}) error {
 				}
 			case 3:
 				cr.RequestType = MineSQS
-				if master, ok := m["master"]; ok {
-					if data, good := master.(map[string]interface{}); good {
-						cr.Master = new(ClusterQueue)
-						if err := cr.Master.Unmarshal(data); err != nil {
+				var err error
+				if packet, ok := m["packet"]; ok {
+					if data, good := packet.(map[string]interface{}); good {
+						manager := jobmanager.NewJobManager().
+							WithJobHelper(&JobHelper{})
+						cr.Packet, err = manager.UnmarshalJobPacket(data)
+						if err != nil {
 							return err
 						}
 					}
 				}
 			case 4:
 				cr.RequestType = ClusterMaster
-				if master, ok := m["master"]; ok {
-					if data, good := master.(map[string]interface{}); good {
-						cr.Master = new(ClusterQueue)
-						if err := cr.Master.Unmarshal(data); err != nil {
+				var err error
+				if packet, ok := m["packet"]; ok {
+					if data, good := packet.(map[string]interface{}); good {
+						manager := jobmanager.NewJobManager().
+							WithJobHelper(&JobHelper{})
+						cr.Packet, err = manager.UnmarshalJobPacket(data)
+						if err != nil {
 							return err
 						}
 					}
@@ -331,20 +337,17 @@ func NewClusterResponse(cr *ClusterRequest, id string) *ClusterResponse {
 }
 
 func (cr *ClusterResponse) Unmarshal(m map[string]interface{}) error {
-	if to, ok := m["timeout"]; ok {
-		if nto, good := to.(float64); good {
-			cr.Timeout = time.Duration(int64(nto))
-		}
+	to := Float64For("timeout", 0.0, m)
+	if to != 0.0 {
+		cr.Timeout = time.Duration(int64(to))
 	} else {
 		cr.Timeout = time.Minute
 	}
 	cr.ParentId = StringFor("parentId", "", m)
-	if item, ok := m["item"]; ok {
-		if cItem, good := item.(map[string]interface{}); good {
-			cr.Item = new(ClusterRequest)
-			cr.Item.Unmarshal(cItem)
-		} else {
-			return fmt.Errorf("item is not a map[string]interface{}, it is a %s", reflect.TypeOf(item).String())
+	if cItem, ok := SubpropFor("item", m); ok {
+		cr.Item = new(ClusterRequest)
+		if e := cr.Item.Unmarshal(cItem); e != nil {
+			return e
 		}
 	} else {
 		return fmt.Errorf("No item found")
@@ -352,22 +355,65 @@ func (cr *ClusterResponse) Unmarshal(m map[string]interface{}) error {
 	return nil
 }
 
+type ClusterJob struct {
+	Part      int    `json:"part"`
+	Last      int    `json:"last"`
+	Id        string `json:"id"`
+	StartTime string `json:"startTime"`
+}
+
+func (cj *ClusterJob) Unmarshal(m map[string]interface{}) error {
+	cj.Id = StringFor("id", "", m)
+	cj.StartTime = StringFor("startTime", "", m)
+	cj.Part = IntFor("part", -1, m)
+	cj.Last = IntFor("last", -1, m)
+	if cj.Part == -1 {
+		return errors.New("part is missing")
+	}
+	if cj.Last == -1 {
+		return errors.New("last is missing")
+	}
+	return nil
+}
+
+func (cj *ClusterJob) IsLastPart() bool {
+	return cj.Part == cj.Last
+}
+
+func (cj *ClusterJob) CalcDuration() time.Duration {
+	st, err := time.Parse("2006-01-02 15:04:05.000000000 -0700 MST", cj.StartTime)
+	if err != nil {
+		log.Println("Job", cj.Id, "completed but time", cj.StartTime, "could not be parsed", err)
+		return time.Duration(0)
+	} else {
+		return time.Now().UTC().Sub(st)
+	}
+}
+
 type ClusterQueue struct {
-	Items     []*ClusterResponse `json:"items"`
-	Next      string             `json:"next"`
-	MaxNext   int                `json:"maxNext"`
-	StartTime string             `json:"startTime"`
-	ParentId  string             `json:"parentId"`
+	Items   []*ClusterResponse `json:"items"`
+	Next    string             `json:"next"`
+	MaxNext int                `json:"maxNext"`
+	Job     *ClusterJob        `json:"job"`
+	SubJob  *ClusterJob        `json:"subjob,omitempty"`
 }
 
 func (cq *ClusterQueue) CloneWith(items []*ClusterResponse) *ClusterQueue {
 	c := new(ClusterQueue)
 	c.Next = cq.Next
 	c.MaxNext = cq.MaxNext
-	c.StartTime = cq.StartTime
-	c.ParentId = cq.ParentId
 	c.Items = items
+	c.Job = cq.Job
+	c.SubJob = cq.SubJob
 	return c
+}
+
+func (cq *ClusterQueue) IsLastPart() bool {
+	return cq.Job.IsLastPart()
+}
+
+func (cq *ClusterQueue) IsSubJob() bool {
+	return cq.SubJob != nil
 }
 
 func (cq *ClusterQueue) Unmarshal(m map[string]interface{}) error {
@@ -386,11 +432,20 @@ func (cq *ClusterQueue) Unmarshal(m map[string]interface{}) error {
 		return fmt.Errorf("No items found")
 	}
 	cq.Next = StringFor("next", "", m)
-	cq.StartTime = StringFor("startTime", "", m)
-	cq.ParentId = StringFor("parentId", "", m)
-	if mn, ok := m["maxNext"]; ok {
-		if mx, good := mn.(float64); good {
-			cq.MaxNext = int(mx)
+	cq.MaxNext = IntFor("maxNext", 10, m)
+
+	if job, ok := SubpropFor("job", m); ok {
+		cq.Job = new(ClusterJob)
+		if e := cq.Job.Unmarshal(job); e != nil {
+			return e
+		}
+	}
+	if j, ok := m["subJob"]; ok {
+		if job, good := j.(map[string]interface{}); good {
+			cq.SubJob = new(ClusterJob)
+			if e := cq.SubJob.Unmarshal(job); e != nil {
+				return e
+			}
 		}
 	}
 	return nil
@@ -403,6 +458,8 @@ const (
 	Leave
 	Reset
 	JobComplete
+	ActivePart
+	PartComplete
 )
 
 type IndexerRequest struct {
@@ -423,6 +480,10 @@ func (ir *IndexerRequest) String() string {
 		rtype = "Reset"
 	case JobComplete:
 		rtype = "JobComplete"
+	case ActivePart:
+		rtype = "ActivePart"
+	case PartComplete:
+		rtype = "PartComplete"
 	}
 	return fmt.Sprintf("%s: Name: %s, Num: %d, Duration: %s", rtype, ir.Name, ir.Num, ir.Duration.String())
 }
@@ -430,18 +491,7 @@ func (ir *IndexerRequest) String() string {
 func (ir *IndexerRequest) Unmarshal(m map[string]interface{}) error {
 	if v, ok := m["type"]; ok {
 		if val, good := v.(float64); good {
-			switch int64(val) {
-			case 0:
-				ir.RequestType = Enter
-			case 1:
-				ir.RequestType = Leave
-			case 2:
-				ir.RequestType = Reset
-			case 3:
-				ir.RequestType = JobComplete
-			default:
-				return fmt.Errorf("Unknown IndexerRequestType %v", int64(val))
-			}
+			ir.RequestType = IndexerRequestType(int64(val))
 		}
 	} else {
 		return fmt.Errorf("No type property found")
