@@ -18,7 +18,7 @@ import (
 	"github.com/go-redis/redis"
 )
 
-var version = "0.25"
+var version = "0.55"
 
 type TraceLogger struct {
 }
@@ -51,6 +51,7 @@ type RequestParams struct {
 	Cap          int
 	Monitor      string
 	Stats        string
+	IndexFiles   bool
 	StatsClient  *redis.Client
 }
 
@@ -81,9 +82,11 @@ func NewParams() *RequestParams {
 	params.Cap, _ = strconv.Atoi(loadFromEnv("cap", "100"))
 	params.Stats = loadFromEnv("stats", "")
 	params.Monitor = loadFromEnv("monitor", "")
+	params.IndexFiles, _ = strconv.ParseBool(loadFromEnv("indexFiles", "true"))
 	return params
 }
 
+func (rp *RequestParams) DoIndex() bool                { return rp.IndexFiles }
 func (rp *RequestParams) UseLambda() bool              { return rp.Next != "" }
 func (rp *RequestParams) UseStats() bool               { return rp.Stats != "" }
 func (rp *RequestParams) GetStats() *redis.Client      { return rp.StatsClient }
