@@ -247,21 +247,23 @@ func (ef *ExtractFile) EjectNonShapeFile() ([]*ExtractFile, bool) {
 	return nil, false
 }
 
-func Extract(di Extractable) ([]*ExtractFile, bool) {
+func Extract(keys []*bucket.BucketFile, prefix string) ([]*ExtractFile, bool) {
 	dirFiles := make(map[string]*bucket.BucketFile)
 	baseNames := NewStringBucketSet()
-	keys := di.GetKeys()
 	retval := make([]*ExtractFile, 0, len(keys))
 	// First split out files with extensions, add others
+	// Cull files that are in sub-directories of the passed prefix
 	for _, f := range keys {
-		_, name := path.Split(f.Key)
-		dirFiles[name] = f
-		if base, ext, ok := getExtension(name); ok {
-			baseNames.Add(base, NewBucketData(base, ext, f))
-		} else {
-			ef := new(ExtractFile)
-			ef.File = NewBucketFileInfo(f)
-			retval = append(retval, ef)
+		dir, name := path.Split(f.Key)
+		if dir == prefix {
+			dirFiles[name] = f
+			if base, ext, ok := getExtension(name); ok {
+				baseNames.Add(base, NewBucketData(base, ext, f))
+			} else {
+				ef := new(ExtractFile)
+				ef.File = NewBucketFileInfo(f)
+				retval = append(retval, ef)
+			}
 		}
 	}
 	// Now go thru the files with extensions and create ExtractFiles for them
