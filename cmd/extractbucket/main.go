@@ -193,7 +193,8 @@ func main() {
 					size += di.Size
 					crOut := new(geoindex.ClusterRequest)
 					crOut.RequestType = geoindex.GroupFiles
-					crOut.DirFiles = &geoindex.DirRequest{Files: di.Keys}
+					prefix, _ := path.Split(di.Keys[0].Key)
+					crOut.DirFiles = &geoindex.DirRequest{Bucket: cr.Bucket.Bucket, Region: cr.Bucket.Region, Prefix: prefix}
 					outName := path.Join(outdir, fmt.Sprintf("dir-request-%s.json", uuid.NewV4()))
 					scale.WriteJsonFile(outName, crOut)
 					myOutputFile := &scale.OutputFile{

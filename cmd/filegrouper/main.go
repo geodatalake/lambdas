@@ -9,6 +9,9 @@ import (
 	"os"
 	"path"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/geodatalake/lambdas/bucket"
 	"github.com/geodatalake/lambdas/elastichelper"
 	"github.com/geodatalake/lambdas/geoindex"
 	"github.com/geodatalake/lambdas/scale"
@@ -159,10 +162,21 @@ func main() {
 			scale.WriteStderr(errJson.Error())
 			os.Exit(40)
 		}
+		sess, err := scale.GetAwsSession()
+		if err != nil {
+			scale.WriteStderr(err.Error())
+			os.Exit(50)
+		}
+		svc := s3.New(sess, aws.NewConfig().WithRegion(cr.DirFiles.Region))
+		keys, err2 := bucket.ReadBucketDir(cr.DirFiles.Region, cr.DirFiles.Bucket, cr.DirFiles.Prefix, svc)
+		if err2 != nil {
+			scale.WriteStderr(err2.Error())
+			os.Exit(50)
+		}
 		allExtracts := make([]*scale.OutputFile, 0, 128)
 		switch cr.RequestType {
 		case geoindex.GroupFiles:
-			files, ok := geoindex.Extract(cr.DirFiles)
+			files, ok := geoindex.Extract(keys, cr.DirFiles.Prefix)
 			if ok {
 				for _, ef := range files {
 					var writer io.WriteCloser
