@@ -13,7 +13,7 @@ import (
 	"github.com/go-redis/redis"
 )
 
-var version = "0.25"
+var version = "0.55"
 
 func main() {}
 
@@ -73,11 +73,16 @@ func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 			sb_totalrun := client.Get(geoindex.JScan + geoindex.Totalrun)
 			gf_totalrun := client.Get(geoindex.JGroup + geoindex.Totalrun)
 			pr_totalrun := client.Get(geoindex.JProcess + geoindex.Totalrun)
+
+			masters := client.Get(geoindex.JMaster)
+			pj := client.Get(geoindex.JPending)
 			body := doc().
 				AddKV("Version", version).
 				AddKV("ScanBucket", sb.Val()).
 				AddKV("GroupFiles", gf.Val()).
 				AddKV("ProcessGeo", pr.Val()).
+				AddKV("JobManagers", masters.Val()).
+				AddKV("PendingJobs", pj.Val()).
 				AddKV("ScanBucket_Totalrun", sb_totalrun.Val()).
 				AddKV("GroupFiles_Totalrun", gf_totalrun.Val()).
 				AddKV("ProcessGeo_Totalrun", pr_totalrun.Val())
@@ -106,11 +111,22 @@ func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 			}
 			switch req.RequestType {
 			case geoindex.Enter:
-				client.IncrBy(req.Name, int64(req.Num))
+				num := req.Num
+				if num == 0 {
+					num = 1
+				}
+				client.IncrBy(req.Name, int64(num))
+				if req.Name != geoindex.JPending {
+					client.DecrBy(geoindex.JPending, int64(num))
+				}
 				return geoindex.NewIndexerResponse(true, 0), nil
 			case geoindex.Leave:
-				client.DecrBy(req.Name, int64(req.Num))
-				client.IncrBy(req.Name+geoindex.Totalrun, int64(req.Num))
+				num := req.Num
+				if num == 0 {
+					num = 1
+				}
+				client.DecrBy(req.Name, int64(num))
+				client.IncrBy(req.Name+geoindex.Totalrun, int64(num))
 				return geoindex.NewIndexerResponse(true, 0), nil
 			case geoindex.Reset:
 				r := client.Set(geoindex.JScan, "0", 0)
@@ -119,14 +135,31 @@ func Handle(evt interface{}, ctx *runtime.Context) (interface{}, error) {
 				r_totals := client.Set(geoindex.JScan+geoindex.Totalrun, "0", 0)
 				r1_totals := client.Set(geoindex.JGroup+geoindex.Totalrun, "0", 0)
 				r2_totals := client.Set(geoindex.JProcess+geoindex.Totalrun, "0", 0)
+				r3 := client.Set(geoindex.JMaster, "0", 0)
+				pj := client.Set(geoindex.JPending, "0", 0)
 				cj := client.Del("CompletedJobs")
-				log.Println("initialized values:", r, r1, r2, r_totals, r1_totals, r2_totals, cj)
+				log.Println("initialized values:", r, r1, r2, r3, r_totals, r1_totals, r2_totals, cj, pj)
 				return geoindex.NewIndexerResponse(true, 0), nil
 			case geoindex.JobComplete:
 				client.Set(req.Name, req.Duration.String(), 0)
 				client.LPush("CompletedJobs", req.Name)
 				client.LTrim("CompletedJobs", 0, 5)
 				return geoindex.NewIndexerResponse(true, 0), nil
+			case geoindex.ActivePart:
+				part := client.Get(req.Name + "_activepart")
+				if part.Err() != nil {
+					return geoindex.NewIndexerResponse(true, 0), nil
+				} else {
+					if p, err := part.Int64(); err != nil {
+						log.Println("Error decoding active part", err)
+						return geoindex.NewIndexerResponse(true, 0), nil
+					} else {
+						return geoindex.NewIndexerResponse(true, int(p)), nil
+					}
+				}
+			case geoindex.PartComplete:
+				part := client.Incr(req.Name + "_activepart")
+				return geoindex.NewIndexerResponse(true, int(part.Val())), nil
 			}
 			log.Println("Unhandled request")
 			return geoindex.NewIndexerResponse(false, 0), nil

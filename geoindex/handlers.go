@@ -10,18 +10,18 @@ import (
 	"fmt"
 	"log"
 	"path"
+	"reflect"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/lambda"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/dustin/go-humanize"
 	"github.com/eawsy/aws-lambda-go-core/service/lambda/runtime"
 	"github.com/geodatalake/lambdas/bucket"
 	"github.com/geodatalake/lambdas/elastichelper"
+	"github.com/geodatalake/lambdas/jobmanager"
 	"github.com/geodatalake/lambdas/proj4support"
 	"github.com/geodatalake/lambdas/scale"
 	"github.com/go-redis/redis"
@@ -40,12 +40,16 @@ type HandlerSpec interface {
 	UseLambda() bool
 	UseStats() bool
 	GetStats() *redis.Client
+	DoIndex() bool
 }
 
 const (
 	JScan    = "scan_bucket"
 	JGroup   = "group_files"
 	JProcess = "process_geo"
+
+	JMaster  = "clusterMasters"
+	JPending = "pendingJobs"
 
 	Totalrun = "_totalrun"
 )
@@ -63,33 +67,132 @@ func (js *JobSpec) IsSuccess() bool {
 	return js.Err == nil
 }
 
+type JobHelper struct {
+	ctx *runtime.Context
+}
+
+func (jh *JobHelper) DecodeJobs(arr []interface{}) ([]interface{}, error) {
+	retval := make([]interface{}, 0, len(arr))
+	for _, obj := range arr {
+		if m, ok := obj.(map[string]interface{}); ok {
+			cr := new(ClusterResponse)
+			if err1 := cr.Unmarshal(m); err1 == nil {
+				retval = append(retval, cr)
+			} else {
+				return nil, fmt.Errorf("Error reading ClusterResponse: %v", err1)
+			}
+		} else {
+			return nil, fmt.Errorf("Expected map[string]interface{} but got %s", reflect.TypeOf(obj).String())
+		}
+	}
+	return retval, nil
+}
+
+// This is actually a JobSpec with embedded jobs
+func (jh *JobHelper) UnmarshalJobs(data []byte) ([]interface{}, error) {
+	log.Println("Unmarshaling", string(data))
+	js := new(JobSpec)
+	err := json.Unmarshal(data, js)
+	if err != nil {
+		log.Println("Error unmarshing", err)
+		return nil, err
+	}
+	retval := make([]interface{}, 0, len(js.Items))
+	for _, j := range js.Items {
+		retval = append(retval, j)
+	}
+	return retval, err
+}
+
+func (jh *JobHelper) GetTimeout(job interface{}) time.Duration {
+	if cr, ok := job.(*ClusterResponse); ok {
+		return cr.Timeout
+	} else {
+		log.Println("WARN: expected job to be ClusterResponse pointer, it was", reflect.TypeOf(job).String())
+	}
+	return time.Minute
+}
+
+func (jh *JobHelper) GetType(job interface{}) string {
+	if cr, ok := job.(*ClusterResponse); ok {
+		switch cr.Item.RequestType {
+		case ScanBucket:
+			return JScan
+		case ExtractFileType:
+			return JProcess
+		case GroupFiles:
+			return JGroup
+		}
+	} else {
+		log.Println("Expected job to be a ClusterResponse pointer, but it was", reflect.TypeOf(job).String())
+	}
+	return "UKNOWN"
+}
+
+func (jh *JobHelper) GetActualJob(job interface{}) interface{} {
+	if cr, ok := job.(*ClusterResponse); ok {
+		return cr.Item
+	} else if req, good := job.(*ClusterRequest); good {
+		return req
+	} else {
+		log.Println("Unknown job type", reflect.TypeOf(job).String())
+	}
+	return job
+}
+
+type OverallTimeout struct {
+	ctx *runtime.Context
+}
+
+func (ot *OverallTimeout) Timeout() time.Duration {
+	return time.Duration(ot.ctx.RemainingTimeInMillis() * 1000 * 1000)
+}
+
 func (cr *ClusterRequest) Handle(specs HandlerSpec, ctx *runtime.Context) *JobSpec {
 	js := new(JobSpec)
 	js.Start = time.Now().UTC()
 	switch cr.RequestType {
 	case ScanBucket:
 		mc := NewMonitorConn().WithRegion("us-west-2").WithFunctionArn(specs.GetMonitor())
+		mc.InvokeIndexer(Enter, JPending, 1)
 		mc.InvokeIndexer(Enter, JScan, 1)
 		js.Name = JScan
 		log.Println("Initiating bucket scan", cr.Bucket)
-		cq := new(ClusterQueue)
 		items, err := scanBucket(cr, specs)
+		log.Println("items=", items)
 		js.Err = err
 		if js.IsSuccess() {
+			startTime := time.Now().UTC().String()
+			jobId := cr.Bucket.Bucket + "_" + startTime
 			next, maxNext, _, _ := specs.GetNexts()
-			cq.MaxNext = maxNext
-			cq.Next = next
-			cq.StartTime = time.Now().UTC().String()
-			cq.ParentId = cr.Bucket.Bucket + "_" + cq.StartTime
-			cq.Items = items
-			masterCr := new(ClusterRequest)
-			masterCr.RequestType = ClusterMaster
-			masterCr.Master = cq
-			masterCr.Id = cq.ParentId
-			log.Println("Sending", len(items), "jobs to master")
-			if _, err := AsyncCallNext(masterCr, next); err != nil {
-				log.Println("Error invoking master lambda", err)
-				js.Err = err
+			mc.RegisterStart(JPending, len(items))
+			parts := jobmanager.NewJobManager().CalcPackets(len(items), maxNext)
+			log.Println("Job requires", parts, "parts")
+			for i := 0; i < parts; i++ {
+				job := jobmanager.NewClusterJob(jobId, startTime, i, parts-1)
+				jp := new(jobmanager.JobPacket).
+					WithNexts(next, maxNext).
+					WithClusterJobs(job, nil)
+				start, end := i*maxNext, (i*maxNext)+maxNext
+				if end > len(items) {
+					end = len(items)
+				}
+				log.Println("Processing start, end:", start, end)
+				j := make([]interface{}, 0, end-start)
+				for _, job := range items[start:end] {
+					j = append(j, job)
+				}
+				jp.AddJobs(j)
+				log.Println(jp)
+				masterCr := new(ClusterRequest)
+				masterCr.RequestType = ClusterMaster
+				masterCr.Packet = jp
+				masterCr.Id = jp.MyJob.Id
+				log.Println("Sending", len(j), "jobs to master part", i, "of", parts-1)
+				if _, err := AsyncCallNext(masterCr, next); err != nil {
+					log.Println("Error invoking master lambda", err)
+					js.Err = err
+				}
 			}
 		}
 		mc.InvokeIndexer(Leave, JScan, 1)
@@ -101,7 +204,7 @@ func (cr *ClusterRequest) Handle(specs HandlerSpec, ctx *runtime.Context) *JobSp
 		br, err := extractFile(cr, specs)
 		if err != nil {
 			js.Err = err
-		} else {
+		} else if specs.DoIndex() {
 			js.Err = index(br, specs)
 		}
 	case MineSQS:
@@ -120,44 +223,26 @@ func (cr *ClusterRequest) Handle(specs HandlerSpec, ctx *runtime.Context) *JobSp
 }
 
 func MasterCluster(cr *ClusterRequest, specs HandlerSpec, ctx *runtime.Context) error {
-	if cr.Master != nil {
-		log.Println("Assuming master, starting processing a queue of", len(cr.Master.Items), "jobs", cr.Master.MaxNext, "jobs at a time")
-		nq, timedout, complete := SendQueue(specs, cr.Master, ctx, false)
-		for {
-			if complete {
-				st, err := time.Parse("2006-01-02 15:04:05.000000000 -0700 MST", cr.Master.StartTime)
-				if err != nil {
-					log.Println("Job", cr.Master.ParentId, "completed but time", cr.Master.StartTime, "could not be parsed", err)
-				} else {
-					dur := time.Now().UTC().Sub(st)
-					log.Println("Job", cr.Master.ParentId, "Completed in", dur)
-					ir := new(IndexerRequest)
-					ir.Name = cr.Master.ParentId
-					ir.Duration = dur
-					ir.RequestType = JobComplete
-					mc := NewMonitorConn().WithRegion("us-west-2").WithFunctionArn(specs.GetMonitor())
-					mc.Invoke(ir)
-				}
-				return nil
-			}
-			if timedout {
-				if nq != nil {
-					req := new(ClusterRequest)
-					req.RequestType = ClusterMaster
-					req.Master = nq
-					AsyncCallNext(req, ctx.InvokedFunctionARN)
-					return nil
-				}
-			} else if nq != nil {
-				nq, timedout, complete = SendQueue(specs, nq, ctx, false)
-			} else {
-				return nil
-			}
+	if cr.Packet != nil {
+		mc := NewMonitorConn().WithRegion("us-west-2").WithFunctionArn(specs.GetMonitor())
+		mc.InvokeIndexer(Enter, JPending, 1)
+		mc.InvokeIndexer(Enter, JMaster, 1)
+		defer mc.InvokeIndexer(Leave, JMaster, 1)
+
+		manager := jobmanager.NewJobManager().
+			WithSyncHelper(mc).
+			WithDriver(NewLamabdaHelper().WithRegion("us-west-2")).
+			WithJobHelper(&JobHelper{ctx: ctx}).
+			WithJobTimeout(&OverallTimeout{ctx: ctx})
+		if err := manager.RunMaster(cr.Packet, ctx.InvokedFunctionARN); err != nil {
+			log.Println("Error: Executing RunMaster", err)
+			return fmt.Errorf("Error executing RunMaster: %v", err)
 		}
 	} else {
-		log.Println("Error: No master property in ClusterRequest")
-		return fmt.Errorf("No master property in ClusterRequest")
+		log.Println("Error: Packet is nil")
+		return fmt.Errorf("Error: Packet is nil")
 	}
+	return nil
 }
 
 func scanBucket(cr *ClusterRequest, specs HandlerSpec) ([]*ClusterResponse, error) {
@@ -186,7 +271,8 @@ func scanBucket(cr *ClusterRequest, specs HandlerSpec) ([]*ClusterResponse, erro
 			size += di.Size
 			crOut := new(ClusterRequest)
 			crOut.RequestType = GroupFiles
-			crOut.DirFiles = &DirRequest{Files: di.Keys}
+			prefix, _ := path.Split(di.Keys[0].Key)
+			crOut.DirFiles = &DirRequest{Bucket: cr.Bucket.Bucket, Region: cr.Bucket.Region, Prefix: prefix}
 			crOut.Id = cr.Id
 			retval = append(retval, NewClusterResponse(crOut, cr.Id))
 		}
@@ -198,9 +284,17 @@ func scanBucket(cr *ClusterRequest, specs HandlerSpec) ([]*ClusterResponse, erro
 
 func groupFiles(cr *ClusterRequest, specs HandlerSpec) ([]*ClusterResponse, error) {
 	log.Println("Processing", cr)
-	files, ok := Extract(cr.DirFiles)
+	sess, err := scale.GetAwsSession()
+	if err != nil {
+		return nil, err
+	}
+	svc := s3.New(sess, aws.NewConfig().WithRegion(cr.DirFiles.Region))
+	keys, err2 := bucket.ReadBucketDir(cr.DirFiles.Region, cr.DirFiles.Bucket, cr.DirFiles.Prefix, svc)
+	if err2 != nil {
+		return nil, err2
+	}
 	retval := []*ClusterResponse{}
-	if ok {
+	if files, ok := Extract(keys, cr.DirFiles.Prefix); ok {
 		retval = make([]*ClusterResponse, 0, len(files))
 		for _, ef := range files {
 			clusterRequest := new(ClusterRequest)
@@ -355,117 +449,4 @@ func index(br *scale.BoundsResult, specs HandlerSpec) error {
 		return fmt.Errorf("Document Creation failed: %v", err)
 	}
 	return nil
-}
-
-func SendQueue(specs HandlerSpec, cq *ClusterQueue, ctx *runtime.Context, sendSqs bool) (*ClusterQueue, bool, bool) {
-	numToSend := cq.MaxNext
-	if numToSend > len(cq.Items) {
-		numToSend = len(cq.Items)
-	}
-	numLeft := len(cq.Items) - numToSend
-	if numLeft == 0 {
-		numLeft = numToSend
-	}
-
-	// Allow the full job timeout + plus 10 seconds to spawn next sender
-	var maxTimeout time.Duration
-	counts := make([]int, 5)
-	for _, cr := range cq.Items[:numToSend] {
-		if maxTimeout > cr.Timeout {
-			maxTimeout = cr.Timeout
-		}
-		counts[int(cr.Item.RequestType)]++
-	}
-	minDuration := maxTimeout + (10 * time.Second)
-	if minDuration > ((4 * time.Minute) + (30 * time.Second)) {
-		log.Println("Timeout can not exceed 4.5 minutes. Not possible to execute a job with timeout", maxTimeout.String())
-		cq.Items = cq.Items[:0]
-		return nil, false, true
-	}
-
-	jobDuration := time.Duration(ctx.RemainingTimeInMillis() * 1000 * 1000)
-
-	if jobDuration < minDuration {
-		return cq, true, len(cq.Items) == 0
-	}
-	jobTimeout := time.After(jobDuration - minDuration)
-
-	ni := make([]*ClusterResponse, 0, numLeft)
-	if len(cq.Items) > cq.MaxNext {
-		for _, i := range cq.Items[numToSend:] {
-			ni = append(ni, i)
-		}
-	}
-	nextQ := cq.CloneWith(ni)
-
-	indexer := NewMonitorConn().
-		WithRegion("us-west-2").
-		WithFunctionArn(specs.GetMonitor())
-
-	indexer.InvokeIndexer(Enter, JScan, counts[0])
-	indexer.InvokeIndexer(Enter, JProcess, counts[1])
-	indexer.InvokeIndexer(Enter, JGroup, counts[2])
-	var wait sync.WaitGroup
-	wait.Add(numToSend)
-
-	responses := make([]*ClusterQueue, numToSend)
-	for idex, item := range cq.Items[0:numToSend] {
-		go func(index int, cr *ClusterResponse) {
-			if ok, io := sendJob(cr.Item, cq.Next, time.After(cr.Timeout)); !ok {
-				nextQ.Items = append(nextQ.Items, cr)
-			} else if io != nil {
-				js := new(JobSpec)
-				if err := json.Unmarshal(io.Payload, js); err != nil {
-					log.Println("Error unmarshaling response payload", err, "Payload:", string(io.Payload))
-				} else {
-					responses[index] = cq.CloneWith(js.Items)
-				}
-			}
-			wait.Done()
-		}(idex, item)
-	}
-	waitDone := make(chan bool, 1)
-	go func() {
-		wait.Wait()
-		waitDone <- true
-	}()
-
-	timedOut := false
-	select {
-	case <-waitDone:
-		timedOut = false
-		break
-	case <-jobTimeout:
-		timedOut = true
-		break
-	}
-
-	indexer.InvokeIndexer(Leave, JScan, counts[0])
-	indexer.InvokeIndexer(Leave, JProcess, counts[1])
-	indexer.InvokeIndexer(Leave, JGroup, counts[2])
-
-	for _, resp := range responses {
-		if resp != nil && len(resp.Items) > 0 {
-			nextQ.Items = append(nextQ.Items, resp.Items...)
-		}
-	}
-	if len(nextQ.Items) > 0 {
-		return nextQ, timedOut, false
-	}
-	return nextQ, false, true
-}
-
-func sendJob(cr *ClusterRequest, next string, timeout <-chan time.Time) (bool, *lambda.InvokeOutput) {
-	resultChan, errChan := AlertCallNext(cr, next)
-	for {
-		select {
-		case io := <-resultChan:
-			return true, io
-		case e := <-errChan:
-			log.Println(e)
-			return true, nil
-		case <-timeout:
-			return false, nil
-		}
-	}
 }

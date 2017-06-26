@@ -41,16 +41,11 @@ dependencies:
     - go build $IMPORT_PATH/vector
     - go build $IMPORT_PATH/geoindex
     - go build $IMPORT_PATH/scale
-    - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/extractbucket
-    - cp extractbucket $CIRCLE_ARTIFACTS
-    - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/filegrouper
-    - cp filegrouper $CIRCLE_ARTIFACTS
+    - go build $IMPORT_PATH/jobmanager
     - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/elastictest
     - cp elastictest $CIRCLE_ARTIFACTS
     - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/indexelastic
     - cp indexelastic $CIRCLE_ARTIFACTS
-    - GOOS=linux go build -a -ldflags '-s' $IMPORT_PATH/cmd/processgeo
-    - cp processgeo $CIRCLE_ARTIFACTS
 
 test:
   pre:
@@ -64,11 +59,9 @@ test:
     - go vet $IMPORT_PATH/vector
     - go vet $IMPORT_PATH/geoindex
     - go vet $IMPORT_PATH/scale
-    - go vet $IMPORT_PATH/cmd/extractbucket
-    - go vet $IMPORT_PATH/cmd/filegrouper
+    - go vet $IMPORT_PATH/jobmanager
     - go vet $IMPORT_PATH/cmd/elastictest
     - go vet $IMPORT_PATH/cmd/indexelastic
-    - go vet $IMPORT_PATH/cmd/processgeo
 
   override:
     - go test $IMPORT_PATH/geotiff
@@ -77,6 +70,7 @@ test:
     - go test $IMPORT_PATH/scale
     - go test $IMPORT_PATH/proj4support
     - go test $IMPORT_PATH/elastichelper
+    - go test $IMPORT_PATH/jobmanager
 
 deployment:
   dev:
@@ -84,19 +78,7 @@ deployment:
     owner: geodatalake
     commands:
       - docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASSWORD
-      - cp extractbucket cmd/extractbucket
-      - docker build -t scale-extract-bucket cmd/extractbucket
-      - docker tag -f scale-extract-bucket openwhere/scale-extract-bucket:dev
-      - docker push openwhere/scale-extract-bucket:dev
-      - cp filegrouper cmd/filegrouper
-      - docker build -t scale-file-grouper cmd/filegrouper
-      - docker tag -f scale-file-grouper openwhere/scale-file-grouper:dev
-      - docker push openwhere/scale-file-grouper:dev
       - cp indexelastic cmd/indexelastic
       - docker build -t scale-index cmd/indexelastic
       - docker tag -f scale-index openwhere/scale-index:dev
       - docker push openwhere/scale-index:dev
-      - cp processgeo cmd/processgeo
-      - docker build -t scale-processgeo cmd/processgeo
-      - docker tag -f scale-processgeo openwhere/scale-processgeo:dev
-      - docker push openwhere/scale-processgeo:dev
