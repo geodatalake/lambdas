@@ -22,15 +22,15 @@ const (
 )
 
 func mineAllObjects(bucket, path string, svc *s3.S3) ([]*s3.Object, error) {
-	//	svc := s3.New(session.New(), &aws.Config{Region: aws.String(region)})
 	input := &s3.ListObjectsInput{Bucket: aws.String(bucket), Prefix: aws.String(path)}
 	if path == "/" {
 		input = &s3.ListObjectsInput{Bucket: aws.String(bucket)}
 	}
-	log.Println("Attempting to read", aws.StringValue(input.Bucket))
+	log.Println("Attempting to read", aws.StringValue(input.Bucket), aws.StringValue(input.Prefix))
 	output, err := svc.ListObjects(input)
 	if err != nil {
 		log.Println("Error reading bucket", err)
+
 		return nil, err
 	}
 	retval := make([]*s3.Object, int(*output.MaxKeys))
@@ -144,8 +144,7 @@ func readBucket(region, dir string, svc *s3.S3) ([]*BucketFile, error) {
 	return retval, nil
 }
 
-func ReadBucketDir(region, dir string, svc *s3.S3) ([]*BucketFile, error) {
-	bucket, prefix := ParsePath(dir)
+func ReadBucketDir(region, bucket, prefix string, svc *s3.S3) ([]*BucketFile, error) {
 	objects, err := mineAllObjects(bucket, prefix, svc)
 	if err != nil {
 		return []*BucketFile{}, err
