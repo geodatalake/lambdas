@@ -5,7 +5,6 @@ package jobmanager
 
 import (
 	"errors"
-	"log"
 	"time"
 )
 
@@ -137,12 +136,16 @@ func (cj *ClusterJob) IsLastPart() bool {
 	return cj.Part == cj.Last
 }
 
+var timeTemplates = []string{
+	"2006-01-02 15:04:05.000000000 -0700 MST",
+	"2006-01-02 15:04:05.00000000 -0700 MST",
+	"2006-01-02 15:04:05.0000000 -0700 MST"}
+
 func (cj *ClusterJob) CalcDuration() time.Duration {
-	st, err := time.Parse("2006-01-02 15:04:05.000000000 -0700 MST", cj.StartTime)
-	if err != nil {
-		log.Println("Job", cj.Id, "completed but time", cj.StartTime, "could not be parsed", err)
-		return time.Duration(0)
-	} else {
-		return time.Now().UTC().Sub(st)
+	for _, tt := range timeTemplates {
+		if st, err := time.Parse(tt, cj.StartTime); err == nil {
+			return time.Now().UTC().Sub(st)
+		}
 	}
+	return time.Duration(0)
 }
