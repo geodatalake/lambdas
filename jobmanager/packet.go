@@ -14,18 +14,23 @@ type JobPacket struct {
 	MySubJob *ClusterJob   `json:"subJob"`
 	MaxNext  int           `json:"maxNext"`
 	Next     string        `json:"next"`
+	PacketId int           `json:"id"`
+}
+
+var packetId int = -1
+var packetCreateLock sync.RWMutex
+
+func NewJobPacket() *JobPacket {
+	packetCreateLock.Lock()
+	defer packetCreateLock.Unlock()
+	packetId++
+	return &JobPacket{PacketId: packetId}
 }
 
 func (jp *JobPacket) String() string {
 	jp.mutex.RLock()
 	defer jp.mutex.RUnlock()
-	good := 0
-	for _, job := range jp.Jobs {
-		if job != nil {
-			good++
-		}
-	}
-	return fmt.Sprintf("JobPacket{jobs: %d, non-nil: %d, next: %s, maxNext: %d}", jp.NumJobs(), good, jp.Next, jp.MaxNext)
+	return fmt.Sprintf("JobPacket{id: %d, jobs: %d, next: %s, maxNext: %d}", jp.PacketId, jp.NumJobs(), jp.Next, jp.MaxNext)
 }
 
 func (jp *JobPacket) WithNexts(next string, maxNexts int) *JobPacket {
@@ -55,7 +60,7 @@ func (jp *JobPacket) AddJob(job interface{}) {
 func (jp *JobPacket) AddJobs(jobs []interface{}) {
 	jp.mutex.Lock()
 	defer jp.mutex.Unlock()
-	log.Println("Adding", len(jobs), "jobs")
+	log.Println("JobPacket id:", jp.PacketId, "Adding", len(jobs), "jobs")
 	jp.Jobs = append(jp.Jobs, jobs...)
 }
 
@@ -71,7 +76,7 @@ func (jp *JobPacket) ExportJobs(start, end int) []interface{} {
 }
 
 func (jp *JobPacket) Clone() *JobPacket {
-	return new(JobPacket).
+	return NewJobPacket().
 		WithNexts(jp.Next, jp.MaxNext).
 		WithClusterJobs(jp.MyJob, jp.MySubJob)
 }

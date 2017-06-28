@@ -33,11 +33,14 @@ func (jm *JobManager) createPackets(packet *JobPacket, startTime string) []*JobP
 		newId := uuid.NewV4().String()
 		for part := 0; part < parts; part++ {
 			pjob := NewClusterJob(newId, startTime, part, parts-1)
-			cq := new(JobPacket).
+			cq := NewJobPacket().
 				WithNexts(packet.Next, packet.MaxNext).
 				WithClusterJobs(pjob, packet.MyJob)
 			start := part * packet.MaxNext
 			end := start + packet.MaxNext
+			if end > packet.NumJobs() {
+				end = packet.NumJobs()
+			}
 			cq.AddJobs(packet.ExportJobs(start, end))
 			retval = append(retval, cq)
 		}
@@ -154,10 +157,12 @@ func (jm *JobManager) RunMaster(packet *JobPacket, invokedFunctionARN string) er
 			if nq != nil {
 				if nq.NumJobs() <= nq.MaxNext {
 					// we can stay on this job
+					log.Println("We can stay on this Packet")
 					jm.queuePacket(nq, invokedFunctionARN)
 				} else {
 					// We need to spawn a sub-job because
 					// the inital calcs are wrong and jobs have grown
+					log.Println("Spawning new Packets")
 					startTime := time.Now().UTC().String()
 					parts := jm.createPackets(nq, startTime)
 					for _, part := range parts {
@@ -187,7 +192,7 @@ func (jm *JobManager) SendQueue(packet *JobPacket) (nb *JobPacket, timeout, comp
 	maxTimeout, occureances := jm.jobCharacteristics(packet, 0, numToSend)
 
 	timeLeft := jm.checkTimeout().Timeout()
-	if timeLeft < maxTimeout+(10*time.Second) {
+	if timeLeft <= maxTimeout+(10*time.Second) {
 		log.Println("job does not have enough time left to run", timeLeft, maxTimeout)
 		return packet, true, packet.NumJobs() == 0
 	}
@@ -205,28 +210,10 @@ func (jm *JobManager) SendQueue(packet *JobPacket) (nb *JobPacket, timeout, comp
 	}
 
 	var wait sync.WaitGroup
-	wait.Add(numToSend)
+	wait.Add(len(items))
 
 	for _, item := range items {
-		go func(job interface{}) {
-			if ok, out := jm.sendJob(job, packet.Next, time.After(jm.checkJobHelper().GetTimeout(job))); !ok {
-				nextPacket.AddJob(job)
-				jm.checkSync().AddPending(1)
-			} else if out != nil {
-				newJobs, err := jm.checkJobHelper().UnmarshalJobs(out)
-				if err != nil {
-					log.Println("Error decoding job return", err)
-					nextPacket.AddJob(job)
-					jm.checkSync().AddPending(1)
-				} else {
-					if len(newJobs) > 0 {
-						nextPacket.AddJobs(newJobs)
-						jm.checkSync().AddPending(len(newJobs))
-					}
-				}
-			}
-			wait.Done()
-		}(item)
+		go jm.ExecJob(item, nextPacket, &wait)
 	}
 
 	waitDone := make(chan bool, 1)
@@ -252,8 +239,38 @@ func (jm *JobManager) SendQueue(packet *JobPacket) (nb *JobPacket, timeout, comp
 	return nextPacket, timedOut, nextPacket.NumJobs() == 0
 }
 
+func (jm *JobManager) ExecJob(job interface{}, nextPacket *JobPacket, wait *sync.WaitGroup) {
+	if ok, out := jm.sendJob(job, nextPacket.Next, time.After(jm.checkJobHelper().GetTimeout(job))); !ok {
+		jm.checkSync().AddPending(1)
+		nextPacket.AddJob(job)
+	} else if out != nil && len(out) > 0 {
+		newJobs, err := jm.checkJobHelper().UnmarshalJobs(out)
+		if err != nil {
+			log.Println("Error decoding job return", err)
+			jm.checkSync().AddPending(len(newJobs))
+			nextPacket.AddJobs(newJobs)
+		} else {
+			if len(newJobs) > 0 {
+				jm.checkSync().AddPending(len(newJobs))
+				nextPacket.AddJobs(newJobs)
+			}
+		}
+	}
+	wait.Done()
+}
+
 func (jm *JobManager) sendJob(job interface{}, next string, timeout <-chan time.Time) (bool, []byte) {
-	resultChan, errChan := jm.alertCallNext(job, next)
+	resultChan := make(chan LambdaInvokeResponse, 1)
+	errChan := make(chan error, 1)
+	go func() {
+		resp, err := jm.queueJob(job, next)
+		if err != nil {
+			errChan <- err
+		} else {
+			resultChan <- resp
+		}
+	}()
+
 	for {
 		select {
 		case io := <-resultChan:
@@ -265,18 +282,4 @@ func (jm *JobManager) sendJob(job interface{}, next string, timeout <-chan time.
 			return false, nil
 		}
 	}
-}
-
-func (jm *JobManager) alertCallNext(job interface{}, next string) (chan LambdaInvokeResponse, chan error) {
-	resultChan := make(chan LambdaInvokeResponse, 1)
-	errChan := make(chan error, 1)
-	go func() {
-		out, err := jm.queueJob(job, next)
-		if err != nil {
-			errChan <- err
-		} else {
-			resultChan <- out
-		}
-	}()
-	return resultChan, errChan
 }
