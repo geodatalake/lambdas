@@ -251,7 +251,7 @@ func scanBucket(cr *ClusterRequest, specs HandlerSpec) ([]*ClusterResponse, erro
 		return nil, err
 	}
 	svc := s3.New(sess, aws.NewConfig().WithRegion(cr.Bucket.Region))
-	root, err2 := bucket.ListBucketStructure(cr.Bucket.Region, cr.Bucket.Bucket, svc)
+	root, err2 := bucket.ListBucketStructure(cr.Bucket.Region, cr.Bucket.Bucket, svc, false, time.Now())
 	if err2 != nil {
 		log.Println("Error listing bucket contents", err2)
 		return nil, err2

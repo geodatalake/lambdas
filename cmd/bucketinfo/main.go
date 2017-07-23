@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -18,6 +20,8 @@ func main() {
 	region := flag.String("r", "us-west-2", "AWS Region")
 	countsOnly := flag.Bool("co", false, "Only counts")
 	prefix := flag.String("prefix", "", "Prefix to use")
+	versions := flag.Bool("v", false, "Include versions")
+	before := flag.String("before", "", "Filter only lastModified before date yyy-MM-dd")
 	flag.Parse()
 
 	overallSize := int64(0)
@@ -38,12 +42,22 @@ func main() {
 			}
 			os.Exit(0)
 		}
-		dirs, err := bucket.ListBucketStructure(*region, uri, svc)
+		filterBefore := time.Now()
+		if *before != "" {
+			if tm, err := time.Parse("2006-01-02", *before); err == nil {
+				filterBefore = tm
+			} else {
+				log.Println("Failed to parse", *before, err)
+			}
+		}
+		dirs, err := bucket.ListBucketStructure(*region, uri, svc, *versions, filterBefore)
 		output := make([]string, 0, 128)
 		totalItems := 0
 		totalSize := int64(0)
-		ch := make(chan *bucket.DirInfo, 1)
-		go func(c chan *bucket.DirInfo) {
+		var wg sync.WaitGroup
+		ch := make(chan *bucket.DirInfo, 1024)
+		wg.Add(1)
+		go func(c chan *bucket.DirInfo, waiter *sync.WaitGroup) {
 			for {
 				info, good := <-c
 				if good {
@@ -62,19 +76,21 @@ func main() {
 					}
 				} else {
 					log.Println("Channel is closed")
+					waiter.Done()
 					break
 				}
 			}
-		}(ch)
+		}(ch, &wg)
 		dirs.Print(0, ch)
 		log.Println("Closing channel")
 		close(ch)
+		wg.Wait()
 		if !*countsOnly {
 			log.Println(strings.Join(output, "\n"))
 		}
 		log.Println("Total Items Found:", totalItems)
 		overallItems += int64(totalItems)
-		log.Println("Total Size of Items:", humanize.Bytes(uint64(totalSize)))
+		log.Println("Total Size of Items:", humanize.Bytes(uint64(totalSize)), humanize.Comma(totalSize))
 		overallSize += totalSize
 		if err != nil {
 			log.Println(err)
@@ -82,5 +98,5 @@ func main() {
 		}
 	}
 	log.Println("Overall Items Found:", humanize.Comma(overallItems))
-	log.Println("Total Size of Overall Items:", humanize.Bytes(uint64(overallSize)))
+	log.Println("Total Size of Overall Items:", humanize.Bytes(uint64(overallSize)), humanize.Comma(overallSize))
 }
