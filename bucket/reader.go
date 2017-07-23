@@ -21,29 +21,75 @@ const (
 	ISO8601FORMAT = "2006-01-02T15:04:05Z"
 )
 
-func mineAllObjects(bucket, path string, svc *s3.S3) ([]*s3.Object, error) {
-	input := &s3.ListObjectsInput{Bucket: aws.String(bucket), Prefix: aws.String(path)}
+func mineAllVersions(bucket, path string, svc *s3.S3) ([]*s3.ObjectVersion, error) {
+	input := &s3.ListObjectVersionsInput{Bucket: aws.String(bucket), Prefix: aws.String(path), MaxKeys: aws.Int64(1000)}
 	if path == "/" {
-		input = &s3.ListObjectsInput{Bucket: aws.String(bucket)}
+		input = &s3.ListObjectVersionsInput{Bucket: aws.String(bucket), MaxKeys: aws.Int64(1000)}
 	}
-	log.Println("Attempting to read", aws.StringValue(input.Bucket), aws.StringValue(input.Prefix))
-	output, err := svc.ListObjects(input)
+	log.Println("Attempting to read all versions", aws.StringValue(input.Bucket), aws.StringValue(input.Prefix))
+	output, err := svc.ListObjectVersions(input)
 	if err != nil {
 		log.Println("Error reading bucket", err)
 
 		return nil, err
 	}
-	retval := make([]*s3.Object, int(*output.MaxKeys))
-	n := copy(retval, output.Contents)
-	fmt.Printf("Copied %d objects, truncated=%v, maxkeys=%d\n", n, *output.IsTruncated, *output.MaxKeys)
-	if *output.IsTruncated == true {
+	retval := make([]*s3.ObjectVersion, len(output.Versions))
+	copy(retval, output.Versions)
+	if aws.BoolValue(output.IsTruncated) == true {
 		for {
-			input.Marker = aws.String(aws.StringValue(output.Contents[len(output.Contents)-1].Key))
-			output, err = svc.ListObjects(input)
+			input.KeyMarker = output.NextKeyMarker
+			input.VersionIdMarker = output.NextVersionIdMarker
+			output, err = svc.ListObjectVersions(input)
 			if err != nil {
 				return nil, err
 			}
-			fmt.Printf("Copied %d objects, truncated=%v\n", len(output.Contents), *output.IsTruncated)
+			fmt.Print("\r", len(retval), "           ")
+			newslice := make([]*s3.ObjectVersion, len(retval)+len(output.Versions))
+			copy(newslice, retval)
+			l := len(retval)
+			for i, o := range output.Versions {
+				newslice[l+i] = o
+			}
+			retval = newslice
+			if !aws.BoolValue(output.IsTruncated) {
+				fmt.Println("complete")
+				break
+			}
+		}
+	} else {
+		return output.Versions, nil
+	}
+	return retval, nil
+}
+
+func mineAllObjects(bucket, path string, svc *s3.S3, versioned bool) ([]*s3.Object, []*s3.ObjectVersion, error) {
+	input := &s3.ListObjectsInput{Bucket: aws.String(bucket), Prefix: aws.String(path)}
+	if path == "/" {
+		input = &s3.ListObjectsInput{Bucket: aws.String(bucket)}
+	}
+	if versioned {
+		log.Println("including versions")
+		versions, err := mineAllVersions(bucket, path, svc)
+		return []*s3.Object{}, versions, err
+	}
+
+	log.Println("Attempting to read", aws.StringValue(input.Bucket), aws.StringValue(input.Prefix))
+	output, err := svc.ListObjects(input)
+	if err != nil {
+		log.Println("Error reading bucket", err)
+
+		return nil, nil, err
+	}
+	retval := make([]*s3.Object, len(output.Contents))
+	copy(retval, output.Contents)
+	if aws.BoolValue(output.IsTruncated) == true {
+		for {
+			input.Marker = output.Contents[len(output.Contents)-1].Key
+			output, err = svc.ListObjects(input)
+			if err != nil {
+				return nil, nil, err
+			}
+			fmt.Print("\r", len(retval), "  ")
 			newslice := make([]*s3.Object, len(retval)+len(output.Contents))
 			copy(newslice, retval)
 			l := len(retval)
@@ -51,14 +97,15 @@ func mineAllObjects(bucket, path string, svc *s3.S3) ([]*s3.Object, error) {
 				newslice[l+i] = o
 			}
 			retval = newslice
-			if !*output.IsTruncated {
+			if !aws.BoolValue(output.IsTruncated) {
+				fmt.Println("complete")
 				break
 			}
 		}
 	} else {
-		return output.Contents, nil
+		return output.Contents, []*s3.ObjectVersion{}, nil
 	}
-	return retval, nil
+	return retval, []*s3.ObjectVersion{}, nil
 }
 
 func ParsePath(dir string) (bucket, prefix string) {
@@ -87,6 +134,7 @@ type BucketFile struct {
 	LastModified string `json:"lastModified"`
 	Region       string `json:"region"`
 	Size         int64  `json:"size"`
+	Version      bool   `json:"version"`
 }
 
 func NewBucketFile(region, bucket, key, lastModified string, size int64) *BucketFile {
@@ -95,7 +143,18 @@ func NewBucketFile(region, bucket, key, lastModified string, size int64) *Bucket
 		Bucket:       bucket,
 		Key:          key,
 		LastModified: lastModified,
-		Size:         size}
+		Size:         size,
+		Version:      false}
+}
+
+func NewBucketFileVersion(region, bucket, key, lastModified string, size int64) *BucketFile {
+	return &BucketFile{
+		Region:       region,
+		Bucket:       bucket,
+		Key:          key,
+		LastModified: lastModified,
+		Size:         size,
+		Version:      true}
 }
 
 func (bf *BucketFile) Unmarshal(m map[string]interface{}) error {
@@ -123,21 +182,41 @@ func (bf *BucketFile) Paths() ([]string, string) {
 	return dirs, file
 }
 
-func readBucket(region, dir string, svc *s3.S3) ([]*BucketFile, error) {
+func isVersioned(bucket string, svc *s3.S3) bool {
+	versioning, err := svc.GetBucketVersioning(&s3.GetBucketVersioningInput{Bucket: aws.String(bucket)})
+	if err == nil {
+		versionStatus := aws.StringValue(versioning.Status)
+		if versionStatus == "Enabled" {
+			return true
+		}
+	}
+	return false
+}
+
+func readBucket(region, dir string, svc *s3.S3, wantVersions bool, filterBefore time.Time) ([]*BucketFile, error) {
 	bucket, prefix := ParsePath(dir)
-	objects, err := mineAllObjects(bucket, prefix, svc)
+	versioned := isVersioned(bucket, svc)
+	if versioned {
+		log.Println("bucket is versioned")
+	}
+	objects, versions, err := mineAllObjects(bucket, prefix, svc, versioned && wantVersions)
 	if err != nil {
 		return []*BucketFile{}, err
 	}
 
-	retval := make([]*BucketFile, 0, len(objects))
-	dirName := fmt.Sprintf("%s/", prefix)
+	retval := make([]*BucketFile, 0, len(objects)+len(versions))
 	for _, object := range objects {
-		filename := aws.StringValue(object.Key)
-		// The directory will match, so filter it out
-		if filename != dirName {
+		if !strings.HasSuffix(aws.StringValue(object.Key), "/") && object.LastModified.Before(filterBefore) {
 			dateTime := fmt.Sprintf("%s", object.LastModified.UTC().Format(ISO8601FORMAT))
 			retval = append(retval, NewBucketFile(region, bucket, aws.StringValue(object.Key), dateTime, *object.Size))
+		}
+	}
+	if versioned && wantVersions {
+		for _, v := range versions {
+			if !strings.HasSuffix(aws.StringValue(v.Key), "/") && v.LastModified.Before(filterBefore) {
+				dateTime := fmt.Sprintf("%s", v.LastModified.UTC().Format(ISO8601FORMAT))
+				retval = append(retval, NewBucketFileVersion(region, bucket, aws.StringValue(v.Key), dateTime, aws.Int64Value(v.Size)))
+			}
 		}
 	}
 	log.Println("Read", len(retval), "BucketFiles")
@@ -145,49 +224,57 @@ func readBucket(region, dir string, svc *s3.S3) ([]*BucketFile, error) {
 }
 
 func ReadBucketDir(region, bucket, prefix string, svc *s3.S3) ([]*BucketFile, error) {
-	objects, err := mineAllObjects(bucket, prefix, svc)
+	versioned := isVersioned(bucket, svc)
+	objects, versions, err := mineAllObjects(bucket, prefix, svc, versioned)
 	if err != nil {
 		return []*BucketFile{}, err
 	}
 
-	retval := make([]*BucketFile, 0, len(objects))
-	dirName := fmt.Sprintf("%s/", prefix)
+	retval := make([]*BucketFile, 0, len(objects)+len(versions))
 	for _, object := range objects {
-		filename := aws.StringValue(object.Key)
-		// The directory will match, so filter it out
-		if filename != dirName {
+		if !strings.HasSuffix(aws.StringValue(object.Key), "/") {
 			dateTime := fmt.Sprintf("%s", object.LastModified.UTC().Format(ISO8601FORMAT))
 			retval = append(retval, NewBucketFile(region, bucket, aws.StringValue(object.Key), dateTime, *object.Size))
+		}
+	}
+	if versioned {
+		for _, v := range versions {
+			if !strings.HasSuffix(aws.StringValue(v.Key), "/") {
+				dateTime := fmt.Sprintf("%s", v.LastModified.UTC().Format(ISO8601FORMAT))
+				retval = append(retval, NewBucketFileVersion(region, bucket, aws.StringValue(v.Key), dateTime, aws.Int64Value(v.Size)))
+			}
 		}
 	}
 	log.Println("Read", len(retval), "BucketFiles")
 	return retval, nil
 }
 
-func ListBucketStructure(region, bucket string, svc *s3.S3) (*DirItem, error) {
+func ListBucketStructure(region, bucket string, svc *s3.S3, wantVersions bool, filterBefore time.Time) (*DirItem, error) {
 	if !strings.HasSuffix(bucket, "/") {
 		bucket = bucket + "/"
 	}
-	bfs, err := readBucket(region, bucket, svc)
+	bfs, err := readBucket(region, bucket, svc, wantVersions, filterBefore)
 	if err != nil {
 		return nil, err
 	}
 	root := NewDirItem("/")
 	for _, bf := range bfs {
-		rootDir := root
+		currentDir := root
 		paths, _ := bf.Paths()
 		for _, p := range paths {
 			if p != "" {
-				if nd, ok := rootDir.Contains(p); !ok {
+				if nd, ok := currentDir.Contains(p); !ok {
 					newDir := NewDirItem(p)
-					rootDir.Add(newDir)
-					rootDir = newDir
+					currentDir.Add(newDir)
+					currentDir = newDir
 				} else {
-					rootDir = nd
+					currentDir = nd
 				}
 			}
 		}
-		rootDir.AddKey(bf)
+		if !bf.Version || wantVersions {
+			currentDir.AddKey(bf)
+		}
 	}
 	return root, nil
 }
@@ -227,8 +314,10 @@ func (di *DirItem) Add(item *DirItem) *DirItem {
 }
 
 func (di *DirItem) AddKey(item *BucketFile) {
-	di.Keys = append(di.Keys, item)
-	di.Size += item.Size
+	if item.Size != 0 {
+		di.Keys = append(di.Keys, item)
+		di.Size += item.Size
+	}
 }
 
 type DirInfo struct {
